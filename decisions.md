@@ -613,3 +613,36 @@ before any real use.
 
 **What I deliberately cut:** deployment protection/password gate; real authentication;
 per-user data isolation.
+
+---
+
+## D19 — Deploy now (mid-build), not after the feature set is complete
+
+**The decision:** connect to Vercel and get a live URL now, while inline correction is the
+most recently finished piece and the fixture suite / provenance / UI polish are still
+outstanding — rather than waiting until every planned feature is done and locally verified.
+
+**The alternatives:**
+- **Deploy last** — finish and locally test the full feature set (provenance, fixture suite,
+  UI polish), then deploy once at the very end, right before the deadline.
+
+**The reasoning:** deploy environments differ from local in ways that only surface once
+deployed — already hit one (the generated Prisma client isn't committed, so Vercel needed a
+`postinstall` hook to run `prisma generate`, see the commit right before this). Other
+platform-specific risks are still unverified: serverless function timeout limits (Gemini
+extraction takes ~15s), env var wiring, Node runtime behavior. Deploying now, with a full
+day of runway left, means any such bug is caught and fixed while there's still time — not
+discovered at 11pm before the deadline with no buffer. The cost of deploying now is small:
+once the GitHub repo is connected, Vercel **auto-deploys on every push to main**, so this
+isn't "redeploy repeatedly" as a manual task — it happens for free while local development
+continues as the primary loop.
+
+**Tradeoffs accepted:** the live URL will show an incomplete feature set for a while (no
+provenance, unpolished UI) until later work lands — acceptable since it's a parallel safety
+check, not the thing being evaluated yet. Vercel's GitHub connection means every future
+commit is public near-instantly, including any in-progress or broken states between commits
+(mitigated by only pushing commits that pass build + tests locally first, which has been
+the practice throughout).
+
+**What I deliberately cut:** waiting to deploy until the entire feature set is locally
+verified.
