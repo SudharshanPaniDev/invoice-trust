@@ -506,3 +506,37 @@ not the chrome.
 
 **What I deliberately cut:** per-screen styling during the build; any UI framework/design
 system work before the core is complete.
+
+---
+
+## D16 — Query as URL-param filters over indexed columns, server-rendered (implements D4)
+
+**The decision:** implement the structured query (D4) as a plain GET filter form whose fields
+live in the URL search params (`?vendor=&status=&minTotal=&maxTotal=&from=&to=`), read by the
+`/invoices` server component, turned into a Prisma `where` by a pure `buildInvoiceWhere`, and
+run against the **indexed searchable columns** from D9. Filters compose (AND); `vendor` is a
+case-insensitive contains, `total` a numeric range, `invoiceDate` a date range, `status` exact.
+
+**The alternatives:**
+- **Client-side filtering** — fetch all rows, filter in the browser. Rejected: doesn't scale,
+  and it isn't a real query — the point of D4/D9 is genuine indexed DB filtering.
+- **A separate `/api/invoices` GET + client fetch/state** — more moving parts than needed;
+  the server component can query directly and render.
+- **Natural-language query now** — still cut (D4): even the stretch NL version must resolve to
+  a structured query with exact rows and never let the model narrate numbers. The structured
+  form *is* that resolved query, shown explicitly in the URL — so it satisfies D4's core and
+  keeps the trust invariant (no model in the query path).
+
+**The reasoning:** URL params make every query shareable, bookmarkable, and reload-safe with
+zero client state, and the resolved filter is visible in the address bar — literally "the
+query it ran," which is exactly D4's "resolved query → exact rows" property. Filtering maps
+1:1 to the D9 indexed columns, so this is the payoff of that denormalization: trivial, fast,
+honest SQL with no JSON gymnastics and no model involvement.
+
+**Tradeoffs accepted:** `total` uses the parsed numeric column, so rows whose total didn't
+parse (null) won't match amount filters — acceptable; an unparseable total is a
+low-confidence field anyway. Pure server-render means each filter change is a round trip (no
+instant client filtering) — fine and simpler at this scale.
+
+**What I deliberately cut:** client-side filtering, a dedicated query API endpoint, and
+(still) natural-language query.
