@@ -17,7 +17,7 @@ export function DocumentViewer({
   highlightBbox: BBox | null | undefined;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [pageSize, setPageSize] = useState<{ width: number; height: number } | null>(null);
+  const [ready, setReady] = useState(false);
   const [status, setStatus] = useState<"loading" | "ready" | "unavailable" | "error">("loading");
 
   useEffect(() => {
@@ -52,7 +52,7 @@ export function DocumentViewer({
 
         await page.render({ canvasContext: context, viewport, canvas }).promise;
         if (!cancelled) {
-          setPageSize({ width: viewport.width, height: viewport.height });
+          setReady(true);
           setStatus("ready");
         }
       } catch (e) {
@@ -82,14 +82,19 @@ export function DocumentViewer({
     );
   }
 
-  // bbox is [ymin, xmin, ymax, xmax] normalized 0-1000 (D8) -> map to canvas pixels.
+  // bbox is [ymin, xmin, ymax, xmax] normalized 0-1000 (D8). Position as PERCENTAGES of
+  // the container, not pixels: the canvas's on-screen size (after `max-w-full` CSS
+  // shrinks it from its native render resolution) is smaller than the pixel dimensions
+  // used to render it, so pixel-based offsets land in the wrong place once the canvas is
+  // displayed smaller than its native bitmap. Percentages track whatever size the canvas
+  // is actually displayed at, regardless of any CSS scaling.
   const overlay =
-    pageSize && highlightBbox
+    ready && highlightBbox
       ? {
-          top: (highlightBbox[0] / 1000) * pageSize.height,
-          left: (highlightBbox[1] / 1000) * pageSize.width,
-          height: ((highlightBbox[2] - highlightBbox[0]) / 1000) * pageSize.height,
-          width: ((highlightBbox[3] - highlightBbox[1]) / 1000) * pageSize.width,
+          top: `${highlightBbox[0] / 10}%`,
+          left: `${highlightBbox[1] / 10}%`,
+          height: `${(highlightBbox[2] - highlightBbox[0]) / 10}%`,
+          width: `${(highlightBbox[3] - highlightBbox[1]) / 10}%`,
         }
       : null;
 

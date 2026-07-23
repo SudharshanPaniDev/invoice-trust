@@ -875,3 +875,60 @@ demonstrating the provenance *concept* reliably, not re-proving extraction fidel
 
 **What I deliberately cut:** a 4th sample invoice; live Gemini extraction for the two new
 fixtures; leaving the samples visually indistinguishable from real submissions.
+
+---
+
+## D25 — Fixed provenance highlight misalignment; overlay uses % not px; adopted Playwright
+
+**The decision:** the click-to-highlight overlay (D-provenance feature) was landing on the
+**wrong location** on the document — the user caught this by testing manually and called it
+out hard, correctly, as a trust-breaking bug rather than a cosmetic one. Root cause: the
+overlay's position was computed in pixels against the canvas's *native* render resolution
+(918×1188, from `page.getViewport({scale: 1.5})`), but the canvas is displayed on-screen at
+a smaller CSS size (`max-w-full` shrinks it to fit its column — verified at 404×522, ~44% of
+native). Pixel offsets computed for one scale, placed inside a container at another scale,
+landed proportionally wrong. Fixed by switching the overlay to **percentage-based**
+positioning: since the bbox is already normalized 0–1000 (already a fraction of the page),
+`top/left/width/height` as `%` strings track whatever size the canvas actually renders at,
+regardless of any CSS scaling — eliminating this entire class of bug rather than patching
+the specific scale mismatch.
+
+**The alternatives:**
+- **Fix the pixel math to also account for the canvas's displayed size** (read
+  `canvas.getBoundingClientRect()` and rescale) — works, but adds a resize-tracking layer
+  (window resize, layout shifts) that percentages get for free from the browser's own
+  layout engine. More code for a strictly worse guarantee.
+- **Force the canvas to always render at its displayed size 1:1** (drop `max-w-full`,
+  render at whatever CSS size the container allows) — rejected: couples the render
+  resolution to layout, and would need re-rendering the PDF on every container resize.
+
+**Why I initially missed this:** I "verified" the provenance feature earlier using `curl` —
+checking that a `<canvas>` element and some expected text existed in the raw HTML. That
+proves the server rendered *something*; it says nothing about where a client-side JS-drawn
+overlay ends up positioned after browser layout, since that only exists post-hydration and
+isn't in the HTML `curl` sees at all. This was a real verification gap: for anything
+involving CSS positioning or client-side layout, checking that markup exists is not the same
+as checking that it displays correctly.
+
+**The reasoning:** an overlay claiming "this is where I read that value from," while
+visually pointing at the wrong part of the document, is worse than having no provenance
+feature at all — it's a false claim asserted with visual confidence, which actively erodes
+trust rather than building it. That risk is exactly why the user's reaction ("folks wont
+trust") was the right reaction, not an overreaction.
+
+**What changed as a result — adopted Playwright for this class of verification:** installed
+`playwright` (dev dependency) to render the actual page in a real headless browser and read
+back `getBoundingClientRect()` on both the canvas and the overlay, computing the
+mathematically-expected overlay position from the bbox and the canvas's *actual* displayed
+size, and asserting the two match — not eyeballing a screenshot, computing the geometry.
+Confirmed correct on the exact three fields (Vendor, GSTIN, Subtotal) the user's screenshots
+showed as broken, both via this geometric check and via saved screenshots.
+
+**Tradeoffs accepted:** `playwright` plus its Chromium binary is a non-trivial dev
+dependency (~100MB+) for a project this size — accepted because "does this pixel-level UI
+behavior actually work" is a category of question `curl`/unit tests structurally cannot
+answer, and this bug is proof that skipping it has a real cost.
+
+**What I deliberately cut:** patching only the specific scale-mismatch math instead of
+switching to percentages (would still be pixel-brittle to some other future scale change);
+continuing to rely on `curl`-based checks for anything with client-side visual positioning.
