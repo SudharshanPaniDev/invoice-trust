@@ -578,3 +578,38 @@ blocked.
 
 **What I deliberately cut:** single-field re-validation; unconditional trust of human edits;
 manual flag-clearing.
+
+---
+
+## D18 — Deploy posture: public demo URL, no auth, synthetic-invoices-only disclaimer
+
+**The decision:** deploy to Vercel as a public, unauthenticated demo URL. Add a visible
+disclaimer in the UI telling users to upload sample/synthetic invoices only, not real
+confidential financial documents. No login, no per-user data isolation, no rate limiting
+beyond what Gemini's free tier already enforces.
+
+**The alternatives:**
+- **Password-gate the deploy** (Vercel deployment protection) — adds friction for a reviewer
+  who just wants to click a link and try it; the brief already frames this as a reviewable
+  demo, not a product with real users.
+- **Add real auth (D1 already cut this)** — out of scope for the same reason D1 cut
+  auth/multi-tenant: it's depth we'd be trading away from the trust core for breadth that
+  doesn't serve the thesis.
+- **Skip deploy entirely, rely on local `pnpm dev`** — rejected: a live URL is the highest-
+  leverage thing for a reviewer cloning tomorrow; it proves the app runs outside my machine
+  and removes "does the setup even work" as a risk.
+
+**The reasoning:** this is the D8 data-use constraint amplified by publicness — anyone who
+finds the URL can upload a file, and Gemini's free tier may use that data to improve
+Google's models (D8). A private, single-developer demo already carried that risk implicitly;
+a public URL makes it explicit, so the disclaimer needs to be visible on the page itself, not
+just in `decisions.md`. No auth is consistent with D1's explicit scope cut and doesn't need
+re-litigating — it's a consequence of that decision, not a new tradeoff being introduced now.
+
+**Tradeoffs accepted:** anyone with the link can upload data (subject to the same free-tier
+training risk as D8), and there's no isolation between uploads — all invoices land in one
+shared list. Acceptable for a time-boxed evaluation demo; would need auth + per-tenant data
+before any real use.
+
+**What I deliberately cut:** deployment protection/password gate; real authentication;
+per-user data isolation.

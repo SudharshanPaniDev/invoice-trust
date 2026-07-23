@@ -52,6 +52,13 @@ export default function Home() {
         math, GSTIN checksum), not claimed by the model.
       </p>
 
+      <p className="mt-3 rounded border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+        ⚠ Demo only — this is a public, unauthenticated instance. Please upload sample or
+        synthetic invoices only. Extraction uses Gemini&apos;s free tier, which may use
+        submitted data to improve Google&apos;s models — do not upload real confidential
+        financial documents.
+      </p>
+
       <form onSubmit={onSubmit} className="mt-6 flex items-center gap-3">
         <input
           type="file"
