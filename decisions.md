@@ -399,3 +399,45 @@ correction. Keeping both shows the actual path rather than a tidied-up rewrite.
 config files, don't trust that a CLI accepting a key means it's type-valid.
 
 **What I deliberately cut:** the `directUrl` config field.
+
+---
+
+## D13 — Earned-confidence scoring model (the thesis, made concrete)
+
+**The decision:** per-field confidence is computed by letting **validation rules dominate**
+the model's self-report, not by averaging them. Concretely, for each field:
+- **Missing required field** → confidence `0`, flagged "required field missing".
+- **Participates in a FAILED rule** → confidence floored **low (≤ 0.3)** and the rule's
+  human-readable message attached as a flag. A failure wins regardless of how confident the
+  model was.
+- **All participating rules PASS** → confidence **high (≥ 0.9)**: arithmetic corroboration
+  (sums, tax math, checksum) is strong evidence, so it outranks the model signal.
+- **No rule can verify the field** (e.g. `vendorName` has no arithmetic check), rules are
+  **NA** → fall back to a **damped** model confidence (`modelConfidence × 0.7`, capped ~0.7)
+  and mark it "unverified". Never "high" on model signal alone.
+
+UI buckets: high ≥ 0.8 · medium 0.5–0.8 · low < 0.5. Money comparisons use a small absolute
+tolerance (0.02) plus a relative allowance for tax rounding.
+
+**The alternatives:**
+- **Weighted average of model confidence and a rule score** — rejected: averaging lets a
+  confident model *mask* a rule failure (0.95 model + 0.1 rule ≈ 0.5 "medium"), exactly the
+  theatre D2 rejects. A failed arithmetic check must floor the field, not dilute.
+- **Rules-only, ignore the model** — rejected: fields with no arithmetic rule (vendor name,
+  invoice number) would have no signal at all. The model is a *fallback* for the unverifiable,
+  explicitly damped and never promoted to "high".
+- **Trust the model's self-reported confidence** — rejected in D2; restated here as the
+  scoring rule that model-alone caps at "medium/unverified".
+
+**The reasoning:** this is D2 turned into arithmetic. "Confidence earned by validation, not
+claimed by the model" only means something if a rule failure *overrides* a confident model
+and an unverifiable field can't reach "high". Flooring on failure and capping on
+model-only signal encode exactly that; corroborated fields earn their high score.
+
+**Tradeoffs accepted:** the thresholds (0.3 / 0.7 / 0.9, 0.02 tolerance) are chosen, not
+learned — reasonable defaults for a demo, tunable later. Fields with no rule can only ever
+be "medium", which is correct (we genuinely can't verify them) even if it looks
+conservative.
+
+**What I deliberately cut:** averaging/weighted-blend scoring; model-self-report as a path
+to high confidence; learned/estimated thresholds.
