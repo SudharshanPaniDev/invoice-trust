@@ -646,3 +646,38 @@ the practice throughout).
 
 **What I deliberately cut:** waiting to deploy until the entire feature set is locally
 verified.
+
+---
+
+## D20 — Normalize currency symbols to ISO codes before validating (real-user-data finding)
+
+**The decision:** add `normalizeCurrency()` mapping common currency symbols/entities (`₹`,
+`$`, `€`, `£`, `¥`, `Rs.`) to their ISO 4217 code before the currency-known rule checks it,
+so a real invoice that renders the symbol instead of the code (`₹` vs `INR`) is recognized
+correctly rather than flagged as invalid.
+
+**The alternatives:**
+- **Leave it as a false-positive flag** — rejected: it's not a real invoice defect, it's a
+  gap in the rule's recognition. A trust system that cries wolf on valid data erodes the
+  credibility of every other flag it raises — the opposite of the thesis (D2).
+- **Widen `KNOWN_CURRENCIES` to include symbols directly** — rejected: symbols and codes
+  aren't equivalent values (multiple symbols can map to the same code, e.g. Rs./₹ → INR),
+  and the rest of the system (display, comparisons) should work off one canonical
+  representation. Normalizing once, then checking against the ISO set, keeps that single
+  source of truth.
+
+**The reasoning:** discovered by testing against a real personal invoice (the user's own
+Jio phone bill, uploaded to local dev only, not the public deploy) — Gemini extracted the
+currency as the rupee *symbol*, not the ISO code my synthetic fixture always used as literal
+text. This is the D11 thesis playing out a second time: real data surfaces gaps a
+hand-authored fixture can't. Every other field on that real bill scored exactly as designed
+(dates/subtotal/tax/total verified via arithmetic; vendor/invoice-no correctly capped at
+medium as unverifiable) — only the currency symbol was a genuine engine gap, not a false
+"working as intended."
+
+**Tradeoffs accepted:** the symbol map is a fixed, manually curated list — an obscure
+currency symbol not in the map still gets correctly flagged as unrecognized (a real
+degradation, not a false positive, so acceptable).
+
+**What I deliberately cut:** widening the known-currency set to include raw symbols instead
+of normalizing to one canonical code first.

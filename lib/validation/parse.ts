@@ -5,6 +5,32 @@
  * low-confidence flag downstream (D2), never a crash.
  */
 
+/** Common currency symbols/entities the model may return instead of an ISO code. */
+const CURRENCY_SYMBOLS: Record<string, string> = {
+  "₹": "INR",
+  "&#8377;": "INR",
+  "rs": "INR",
+  "rs.": "INR",
+  "$": "USD",
+  "us$": "USD",
+  "€": "EUR",
+  "£": "GBP",
+  "¥": "JPY",
+};
+
+/**
+ * Normalize a currency value to its ISO 4217 code. Real invoices (e.g. a Jio phone bill)
+ * often render the symbol "₹" rather than the code "INR" — real data surfaced this gap
+ * that synthetic fixtures didn't (D11). Returns the input uppercased if it's not a known
+ * symbol, so an already-correct ISO code passes through unchanged.
+ */
+export function normalizeCurrency(raw: string | null | undefined): string | null {
+  if (raw == null) return null;
+  const s = raw.trim().toLowerCase();
+  if (s === "") return null;
+  return CURRENCY_SYMBOLS[s] ?? raw.trim().toUpperCase();
+}
+
 /**
  * Parse a monetary/quantity amount. Strips currency words/symbols and thousands
  * separators; keeps sign and decimal point. "INR 11,210.00" -> 11210, "5,000.00" -> 5000,

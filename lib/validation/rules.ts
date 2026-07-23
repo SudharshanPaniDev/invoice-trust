@@ -1,5 +1,5 @@
 import type { RawInvoice } from "../schema";
-import { parseAmount, parseRate, parseDate } from "./parse";
+import { parseAmount, parseRate, parseDate, normalizeCurrency } from "./parse";
 import { validateGSTIN } from "./gstin";
 
 /**
@@ -50,15 +50,18 @@ export function runRules(inv: RawInvoice): RuleResult[] {
     });
   }
 
-  // 2. Currency in a known set
-  const cur = fieldVal(inv, "currency")?.toUpperCase();
+  // 2. Currency in a known set (symbols like "₹" are normalized to their ISO code first)
+  const curRaw = fieldVal(inv, "currency");
+  const cur = normalizeCurrency(curRaw);
   out.push(
     cur == null
       ? { id: "currency.known", status: "na", message: "No currency to check", fields: ["currency"] }
       : {
           id: "currency.known",
           status: KNOWN_CURRENCIES.has(cur) ? "pass" : "fail",
-          message: KNOWN_CURRENCIES.has(cur) ? `Currency ${cur} recognized` : `Unrecognized currency "${cur}"`,
+          message: KNOWN_CURRENCIES.has(cur)
+            ? `Currency ${curRaw} recognized (${cur})`
+            : `Unrecognized currency "${curRaw}"`,
           fields: ["currency"],
         },
   );

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseAmount, parseRate, parseDate } from "@/lib/validation/parse";
+import { parseAmount, parseRate, parseDate, normalizeCurrency } from "@/lib/validation/parse";
 
 describe("parseAmount", () => {
   it("strips currency words and thousands separators (real fixture formats)", () => {
@@ -37,6 +37,23 @@ describe("parseRate", () => {
   });
   it("returns null for junk", () => {
     expect(parseRate("abc")).toBeNull();
+  });
+});
+
+describe("normalizeCurrency", () => {
+  it("maps common symbols to their ISO code (real-world Jio bill used '₹')", () => {
+    expect(normalizeCurrency("₹")).toBe("INR");
+    expect(normalizeCurrency("$")).toBe("USD");
+    expect(normalizeCurrency("€")).toBe("EUR");
+    expect(normalizeCurrency("Rs.")).toBe("INR");
+  });
+  it("passes through an already-correct ISO code, uppercased", () => {
+    expect(normalizeCurrency("inr")).toBe("INR");
+    expect(normalizeCurrency("USD")).toBe("USD");
+  });
+  it("returns null for missing input", () => {
+    expect(normalizeCurrency(null)).toBeNull();
+    expect(normalizeCurrency("")).toBeNull();
   });
 });
 
