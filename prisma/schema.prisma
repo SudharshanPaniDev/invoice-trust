@@ -1,0 +1,55 @@
+// Invoice Trust Layer — data model (see docs/plan.md, decisions D2/D3/D7)
+// Each extracted field is stored as an embedded JSON "Field":
+//   { value, modelConfidence, confidence, bbox, flags[] }
+// confidence is EARNED by validation (D2), never the model's self-report.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Invoice {
+  id      String @id @default(cuid())
+  fileUrl String
+
+  // Lifecycle: processing | needs_review | trusted | failed
+  status String @default("processing")
+
+  // Per-field trust JSON (value + confidence + bbox + flags). Nullable until extracted.
+  vendorName  Json?
+  vendorGSTIN Json?
+  invoiceNo   Json?
+  invoiceDate Json?
+  dueDate     Json?
+  currency    Json?
+  subtotal    Json?
+  taxRate     Json?
+  taxAmount   Json?
+  total       Json?
+
+  lineItems LineItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+}
+
+model LineItem {
+  id        String  @id @default(cuid())
+  invoice   Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  invoiceId String
+  position  Int // order on the invoice
+
+  // Per-field trust JSON, same shape as Invoice fields.
+  description Json?
+  quantity    Json?
+  unitPrice   Json?
+  lineAmount  Json?
+
+  @@index([invoiceId])
+}
