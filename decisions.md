@@ -540,3 +540,41 @@ instant client filtering) — fine and simpler at this scale.
 
 **What I deliberately cut:** client-side filtering, a dedicated query API endpoint, and
 (still) natural-language query.
+
+---
+
+## D17 — Inline correction re-validates the whole invoice; a human edit counts as verification
+
+**The decision:** editing any single field re-runs the full validation pass over the whole
+invoice (not just the edited field), because the rules are cross-field. A human-edited field
+is marked `corrected` and treated as **human-verified**: for a field no rule can check
+(vendor name, invoice number) the correction earns high confidence instead of the damped
+model score; for a field a rule *can* check, the arithmetic/checksum still runs and can still
+flag the corrected value. Corrections persist (the `corrected` marker is stored), and the
+trust gate (D14) re-evaluates from the fresh flags.
+
+**The alternatives:**
+- **Re-validate only the edited field** — rejected: rules are cross-field. Fixing `subtotal`
+  changes the line-items-sum and subtotal+tax=total checks, which touch `total` and
+  `taxAmount`. Scoring one field in isolation would leave stale flags on the others.
+- **Trust the human edit unconditionally** (force the field valid) — rejected: a human can
+  mis-type too. Arithmetic must still check a corrected value; correction changes the
+  *value*, it doesn't switch off validation. Human-as-verification applies only where no rule
+  exists to check.
+- **Recompute nothing; let the user also clear flags manually** — rejected: that makes trust
+  a manual assertion again, the opposite of D2/D14.
+
+**The reasoning:** this closes the trust loop the thesis promises — "messy in → correct →
+re-validate → trustworthy." Re-running the whole pass keeps every dependent flag honest after
+an edit. Counting a human edit as verification for otherwise-uncheckable fields is right
+because an explicit human correction is stronger evidence than a model guess — while still
+letting arithmetic overrule a human who fixes a value wrongly. The result: fix the bad GSTIN
+→ checksum passes → flag clears → gate opens; fix it wrongly → checksum still fails → still
+blocked.
+
+**Tradeoffs accepted:** a full re-score per edit (cheap — pure functions over one invoice).
+`modelConfidence` is dropped for a corrected field (there's no model signal for a human value)
+— the `corrected` marker records provenance instead.
+
+**What I deliberately cut:** single-field re-validation; unconditional trust of human edits;
+manual flag-clearing.
