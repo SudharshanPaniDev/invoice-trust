@@ -319,3 +319,51 @@ schema happened to succeed over the pooler too, but `directUrl` is wired correct
 `migrate dev` going forward.)
 
 **What I deliberately cut:** direct-only and pooled-only single-URL setups.
+
+---
+
+## D11 — Build order: extraction-first vertical slice, not validation-first
+
+**The decision:** build a thin end-to-end slice first — `extract.ts` (Gemini) → minimal
+store → bare page that shows extracted fields — capturing real Gemini outputs as fixtures
+along the way; *then* build the validation / earned-confidence engine (the differentiator)
+deep and TDD **against those real fixtures**; then provenance + journey polish. Extraction
+uses: **PDF sent directly to Gemini** (no server-side render), **Flash** model, and
+**structured output** (`responseSchema`) validated by our Zod contract (D9/`lib/schema.ts`).
+
+**The alternatives:**
+- **Validation engine first** (my initial recommendation) — the thesis is the trust layer,
+  it's pure TS with no external deps, and it's the most test-provable part, so build it
+  first in isolation.
+- **Render PDF → image server-side** (pdfjs + node-canvas) before sending to Gemini —
+  instead of sending the PDF directly.
+- **Flash-Lite** instead of Flash for extraction.
+
+**The reasoning:** I recommended validation-first and then pressure-tested it against a
+"reviewer clones tomorrow, demos end-to-end, 15–20 min" lens. It flipped on two points.
+(1) **Feedback loop:** the validation engine's whole job is surviving real-world mess
+(`"₹9,500.00"` vs `9500`, spaced GSTINs, odd date formats, nulls) — the code most sensitive
+to real input shape. Testing it on hand-authored mocks proves only that it handles shapes I
+imagined; the bugs live in the gap between assumption and reality. Real Gemini output is the
+ground truth it must be tested against, so extraction has to come first to generate it.
+(2) **Risk:** every unknown lives in extraction (does Gemini return usable structured output
++ bboxes on messy invoices? does PDF-direct work? free-tier behavior?); validation is fully
+in our control. Retire the external risk first, not the day before the deadline. Demo value
+and vertical-slice-over-horizontal-layers both point the same way: the earliest interactive
+system a reviewer can touch *is* the extraction entry point, and a thin working end-to-end
+path beats two polished disconnected subsystems. On the extract.ts sub-calls: PDF-direct
+avoids `node-canvas` on serverless (pdfjs stays browser-only for the Phase 3 viewer); Flash
+for accuracy (both free); structured output for a reliable contract match.
+
+**What changed:** I had conflated "most important" with "build first." "Validation is the
+differentiator" is an argument to guarantee it works on *real* data — which requires
+extraction first, not last. Validation-first optimized for building the impressive part in
+isolation (a horizontal-layers instinct), wrong for a one-day, demo-end-to-end build.
+
+**Tradeoffs accepted:** extraction gets built before the differentiator, so it must stay
+**thin** — just enough to flow real data and capture fixtures, not gold-plated — so the bulk
+of remaining time still goes to the trust engine. Risk if ignored: polishing extraction
+starves the differentiator.
+
+**What I deliberately cut:** validation-first ordering; server-side PDF rendering for
+extraction; Flash-Lite.
