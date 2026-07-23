@@ -22,6 +22,15 @@ model Invoice {
   // Lifecycle: processing | needs_review | trusted | failed
   status String @default("processing")
 
+  // Base64-encoded PDF bytes, ONLY populated for seeded sample invoices used to demo
+  // provenance (click a field -> highlight its source on the page). NEVER set for a real
+  // user upload — those are extracted in-memory and discarded (see decisions D21, D22).
+  // Stored as base64 text rather than a native `Bytes`/bytea column: @prisma/adapter-pg
+  // 7.9.0 fails to deserialize bytea back into a Buffer on read (confirmed via raw SQL —
+  // the bytes ARE correctly stored; only Prisma's typed read path chokes on them). Base64
+  // text sidesteps the broken binary-type mapping entirely.
+  fileData String?
+
   // --- Searchable projection (D9): typed, indexed, filled from the *Field JSON ---
   vendorName  String?
   total       Decimal? @db.Decimal(14, 2)

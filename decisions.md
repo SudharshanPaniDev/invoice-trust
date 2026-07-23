@@ -792,3 +792,36 @@ note in D21.
 
 **What I deliberately cut:** implementing encryption for the sample invoice files; treating
 "I added a crypto function" as equivalent to "I reduced a real risk."
+
+---
+
+## D23 — Store sample-invoice bytes as base64 text, not a native `Bytes` column
+
+**The decision:** implementing provenance (D21) needed to persist the seeded sample
+invoices' PDF bytes. `fileData` is a plain `String` column holding base64, not Prisma's
+native `Bytes` type — encoded on write, decoded on read.
+
+**The alternatives:**
+- **`Bytes` / Postgres `bytea` (the obvious choice)** — this was the original plan. Tried
+  it first; it broke.
+
+**The reasoning:** with `Bytes`, writing worked (a raw SQL `octet_length()` check confirmed
+the correct byte count, 1704, actually landed in Postgres), but every typed read
+(`prisma.invoice.findFirst`, etc.) threw `Expected a byte array in column 'fileData', got
+object: %PDF-1.3...` — Prisma's client couldn't deserialize the bytea value the `pg` driver
+adapter (`@prisma/adapter-pg` 7.9.0) handed back into a proper `Buffer`. Confirmed with raw
+SQL that the data itself was intact, so this is a real gap in this adapter version's binary
+type handling, not corrupted data or a mistake in my write path. Rather than spend the
+remaining time chasing an adapter-internals bug, I moved the PDF to base64 text — a
+`String` column is unambiguous across every driver and adapter, sidesteps the broken binary
+mapping entirely, and costs a well-known, bounded ~33% size overhead, which is negligible
+for invoice-sized PDFs.
+
+**Tradeoffs accepted:** ~33% larger storage for the sample files; one extra
+encode/decode step in `storeSampleInvoice` and the file-serving route. Both trivial at this
+scale (a handful of KB-sized sample PDFs).
+
+**What I deliberately cut:** debugging further into `@prisma/adapter-pg`'s bytea handling,
+or pinning/downgrading the adapter version to find one without the bug — not worth the time
+against a one-line, fully verified workaround (confirmed byte-for-byte round-trip against
+the original file).

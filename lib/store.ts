@@ -73,3 +73,25 @@ export async function updateInvoiceScored(
     include: { lineItems: true },
   });
 }
+
+/**
+ * Persist a SAMPLE invoice with its PDF bytes, for the provenance demo (D21/D22). This is
+ * the only path that ever sets `fileData` — never called from the real upload API route.
+ * `fileData` is stored as base64 (see schema comment for why, not a native Bytes column).
+ */
+export async function storeSampleInvoice(
+  raw: RawInvoice,
+  scored: ScoredInvoice,
+  fileUrl: string,
+  fileData: Buffer,
+) {
+  return prisma.invoice.create({
+    data: {
+      fileUrl,
+      fileData: fileData.toString("base64"),
+      ...invoiceColumns(scored),
+      lineItems: { create: lineItemCreates(raw, scored) },
+    },
+    include: { lineItems: true },
+  });
+}
