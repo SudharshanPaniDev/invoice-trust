@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { extractInvoice } from "@/lib/extract";
+import { scoreInvoice } from "@/lib/validation/confidence";
 import { storeInvoice } from "@/lib/store";
 
 // Prisma (pg adapter) + Gemini SDK need the Node runtime, not edge.
@@ -23,10 +24,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: result.error }, { status: 422 });
   }
 
-  const invoice = await storeInvoice(result.data, file.name);
+  const scored = scoreInvoice(result.data);
+  const invoice = await storeInvoice(result.data, scored, file.name);
   return NextResponse.json({
     id: invoice.id,
     status: invoice.status,
-    data: result.data,
+    scored,
   });
 }
