@@ -15,7 +15,8 @@ export interface ScoredField {
   confidence: number; // earned, 0..1
   bbox?: RawField["bbox"];
   sourceText?: string | null;
-  verified: boolean; // corroborated by at least one passing rule
+  verified: boolean; // corroborated by a passing rule or a human correction
+  corrected?: boolean; // value was set by a human (D17)
   flags: string[];
 }
 
@@ -49,6 +50,7 @@ function scoreField(
   field: RawField | undefined,
   rulesForField: RuleResult[],
   required: boolean,
+  corrected: boolean,
 ): ScoredField {
   const value = field?.value ?? null;
   const modelConfidence = field?.modelConfidence ?? null;
@@ -67,12 +69,17 @@ function scoreField(
     confidence = 0;
     flags.push(...(failed.length ? failed.map((r) => r.message) : ["Required field is missing"]));
   } else if (failed.length > 0) {
-    // A failed verifiable rule floors the field regardless of model confidence (D13).
+    // A failed verifiable rule floors the field — even a human correction can't override
+    // arithmetic/checksum (D17): fix it wrongly and it still flags.
     confidence = 0.3;
     flags.push(...failed.map((r) => r.message));
   } else if (passedVerify.length > 0) {
     // Corroborated by arithmetic/checksum/currency/date — earned high.
     confidence = 0.9;
+    verified = true;
+  } else if (corrected) {
+    // No rule can check it, but a human explicitly set the value — human-verified (D17).
+    confidence = 0.95;
     verified = true;
   } else {
     // Nothing could verify it: damped model signal, capped at medium (unverified).
@@ -86,11 +93,15 @@ function scoreField(
     bbox: field?.bbox,
     sourceText: field?.sourceText,
     verified,
+    ...(corrected ? { corrected: true } : {}),
     flags,
   };
 }
 
-export function scoreInvoice(inv: RawInvoice): ScoredInvoice {
+export function scoreInvoice(
+  inv: RawInvoice,
+  correctedKeys: ReadonlySet<string> = new Set(),
+): ScoredInvoice {
   const rules = runRules(inv);
   const rulesFor = (key: string) => rules.filter((r) => r.fields.includes(key));
   const fields: Record<string, ScoredField> = {};
@@ -99,7 +110,7 @@ export function scoreInvoice(inv: RawInvoice): ScoredInvoice {
     const field = inv[key] as RawField | undefined;
     const required = REQUIRED_KEYS.has(key);
     if (field?.value == null && !required) continue; // skip absent optional fields
-    fields[key] = scoreField(key, field, rulesFor(key), required);
+    fields[key] = scoreField(key, field, rulesFor(key), required, correctedKeys.has(key));
   }
 
   inv.lineItems.forEach((li, i) => {
@@ -107,7 +118,7 @@ export function scoreInvoice(inv: RawInvoice): ScoredInvoice {
       const key = `lineItems.${i}.${lk}`;
       const field = li[lk];
       if (field?.value == null) continue;
-      fields[key] = scoreField(key, field, rulesFor(key), false);
+      fields[key] = scoreField(key, field, rulesFor(key), false, correctedKeys.has(key));
     }
   });
 

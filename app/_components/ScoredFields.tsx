@@ -1,4 +1,5 @@
 import type { ScoredField } from "@/lib/validation/confidence";
+import { EditableField } from "../invoices/[id]/EditableField";
 
 const FIELDS: [string, string][] = [
   ["vendorName", "Vendor"],
@@ -29,7 +30,41 @@ function Confidence({ f }: { f: ScoredField | undefined }) {
   );
 }
 
-export function ScoredFields({ fields }: { fields: Record<string, ScoredField> }) {
+function Value({
+  editInvoiceId,
+  fieldKey,
+  f,
+}: {
+  editInvoiceId?: string;
+  fieldKey: string;
+  f: ScoredField | undefined;
+}) {
+  const corrected = f?.corrected ? (
+    <span className="ml-1 rounded bg-blue-50 px-1 text-[10px] text-blue-700">edited</span>
+  ) : null;
+  if (editInvoiceId) {
+    return (
+      <>
+        <EditableField invoiceId={editInvoiceId} fieldKey={fieldKey} value={f?.value ?? null} />
+        {corrected}
+      </>
+    );
+  }
+  return (
+    <span className="font-medium">
+      {f?.value ?? "—"}
+      {corrected}
+    </span>
+  );
+}
+
+export function ScoredFields({
+  fields,
+  editInvoiceId,
+}: {
+  fields: Record<string, ScoredField>;
+  editInvoiceId?: string;
+}) {
   const lineCount = Object.keys(fields)
     .filter((k) => k.startsWith("lineItems."))
     .reduce((max, k) => Math.max(max, Number(k.split(".")[1]) + 1 || 0), 0);
@@ -51,7 +86,9 @@ export function ScoredFields({ fields }: { fields: Record<string, ScoredField> }
             return (
               <tr key={key} className="border-b align-top">
                 <td className="py-1.5 pr-4 text-gray-500">{label}</td>
-                <td className="py-1.5 pr-4 font-medium">{f?.value ?? "—"}</td>
+                <td className="py-1.5 pr-4">
+                  <Value editInvoiceId={editInvoiceId} fieldKey={key} f={f} />
+                </td>
                 <td className="py-1.5 pr-4"><Confidence f={f} /></td>
                 <td className="py-1.5 text-xs text-red-700">
                   {f?.flags.map((flag, i) => <div key={i}>⚠ {flag}</div>)}
@@ -83,10 +120,11 @@ export function ScoredFields({ fields }: { fields: Record<string, ScoredField> }
                 return (
                   <tr key={i} className="border-b align-top">
                     <td className="py-1.5 pr-4 text-gray-400">{i + 1}</td>
-                    <td className="py-1.5 pr-4">{g("description")?.value ?? "—"}</td>
-                    <td className="py-1.5 pr-4">{g("quantity")?.value ?? "—"}</td>
-                    <td className="py-1.5 pr-4">{g("unitPrice")?.value ?? "—"}</td>
-                    <td className="py-1.5 pr-4">{g("lineAmount")?.value ?? "—"}</td>
+                    {LINE_KEYS.map((col) => (
+                      <td key={col} className="py-1.5 pr-4">
+                        <Value editInvoiceId={editInvoiceId} fieldKey={`lineItems.${i}.${col}`} f={g(col)} />
+                      </td>
+                    ))}
                     <td className="py-1.5 text-xs text-red-700">
                       {flags.map((flag, k) => <div key={k}>⚠ {flag}</div>)}
                     </td>

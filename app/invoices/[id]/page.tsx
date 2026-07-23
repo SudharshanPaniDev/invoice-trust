@@ -47,7 +47,8 @@ export default async function InvoiceDetail({
       </div>
 
       <section className="mt-8">
-        <ScoredFields fields={view.fields} />
+        <p className="mb-2 text-xs text-gray-400">Hover a value to edit — corrections re-validate the whole invoice.</p>
+        <ScoredFields fields={view.fields} editInvoiceId={view.id} />
       </section>
     </main>
   );

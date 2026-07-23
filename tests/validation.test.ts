@@ -72,4 +72,17 @@ describe("scoreInvoice — earned confidence (D13)", () => {
     const s = scoreInvoice(makeInvoice({ isInvoice: false }));
     expect(s.overall.canTrust).toBe(false);
   });
+
+  it("a human correction verifies an otherwise-uncheckable field (D17)", () => {
+    const s = scoreInvoice(makeInvoice(), new Set(["vendorName"]));
+    expect(s.fields.vendorName.corrected).toBe(true);
+    expect(s.fields.vendorName.verified).toBe(true);
+    expect(s.fields.vendorName.confidence).toBeGreaterThanOrEqual(0.9);
+  });
+
+  it("a wrong human correction to a checkable field is still flagged (D17)", () => {
+    const s = scoreInvoice(makeInvoice({ total: f("999.00") }), new Set(["total"]));
+    expect(s.fields.total.confidence).toBeLessThanOrEqual(0.3);
+    expect(s.overall.canTrust).toBe(false);
+  });
 });
