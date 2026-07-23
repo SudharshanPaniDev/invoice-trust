@@ -441,3 +441,37 @@ conservative.
 
 **What I deliberately cut:** averaging/weighted-blend scoring; model-self-report as a path
 to high confidence; learned/estimated thresholds.
+
+---
+
+## D14 — Trust is a server-enforced human gate; trust state derived, not stored
+
+**The decision:** "trusted" is a deliberate **human** status transition, and the gate is
+enforced **server-side**: `POST /api/invoices/:id/trust` recomputes the open flags from the
+stored per-field trust JSON and returns `409` if any flag is open — it does not just hide
+the button in the UI. The gate condition (`canTrust`, `openFlags`) is **derived on read**
+from the per-field flags (via `toView`), not persisted as its own column.
+
+**The alternatives:**
+- **UI-only gate** — grey out the button when flags are open, but let the API set
+  `trusted` unconditionally. Rejected: trust is the whole product; a client-only check is
+  bypassable (curl the endpoint) and would let an untrustworthy invoice be marked trusted.
+- **Persist an overall `canTrust` / `openFlags` / `overallConfidence` column** — denormalize
+  the trust verdict alongside the fields. Rejected as the source of truth: once inline field
+  correction (Phase 3) re-runs validation, a stored overall verdict can drift out of sync
+  with the per-field flags. Deriving on read keeps a single source of truth (the field
+  flags). (A cached column could be added later purely as a query optimization if needed.)
+
+**The reasoning:** the thesis (D2) is that the system won't vouch for numbers it can't
+verify. That only holds if "trusted" can't be set while a verifiable check is failing — and
+"can't" has to mean server-enforced, not merely unclickable. Deriving the gate from the same
+per-field flags the engine produced avoids a second, drift-prone copy of the truth; the
+searchable columns (D9) already cover query performance, so there's no need to denormalize
+the verdict too.
+
+**Tradeoffs accepted:** recomputing open flags on each read/trust call is a small scan of
+the row's JSON — negligible at this scale; if a status filter on "trustable" ever needs to
+be fast across many rows, add a cached column then.
+
+**What I deliberately cut:** UI-only trust gating; a persisted overall-trust/confidence
+column as the source of truth.
