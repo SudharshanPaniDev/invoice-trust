@@ -1,0 +1,207 @@
+{
+  "isInvoice": true,
+  "vendorName": {
+    "value": "Acme Technologies Pvt Ltd",
+    "modelConfidence": 0.99,
+    "bbox": [
+      105,
+      81,
+      118,
+      278
+    ],
+    "sourceText": "Acme Technologies Pvt Ltd"
+  },
+  "vendorGSTIN": {
+    "value": "29AABCT1332L1ZT",
+    "modelConfidence": 0.99,
+    "bbox": [
+      121,
+      137,
+      131,
+      281
+    ],
+    "sourceText": "29AABCT1332L1ZT"
+  },
+  "invoiceNo": {
+    "value": "INV-2026-0042",
+    "modelConfidence": 0.99,
+    "bbox": [
+      164,
+      163,
+      175,
+      277
+    ],
+    "sourceText": "INV-2026-0042"
+  },
+  "invoiceDate": {
+    "value": "2026-07-15",
+    "modelConfidence": 0.99,
+    "bbox": [
+      179,
+      175,
+      190,
+      261
+    ],
+    "sourceText": "2026-07-15"
+  },
+  "dueDate": {
+    "value": "2026-08-14",
+    "modelConfidence": 0.99,
+    "bbox": [
+      194,
+      155,
+      204,
+      241
+    ],
+    "sourceText": "2026-08-14"
+  },
+  "currency": {
+    "value": "INR",
+    "modelConfidence": 0.99,
+    "bbox": [
+      310,
+      821,
+      321,
+      850
+    ],
+    "sourceText": "INR"
+  },
+  "subtotal": {
+    "value": "INR 9,500.00",
+    "modelConfidence": 0.99,
+    "bbox": [
+      310,
+      821,
+      321,
+      918
+    ],
+    "sourceText": "INR 9,500.00"
+  },
+  "taxRate": {
+    "value": "18%",
+    "modelConfidence": 0.99,
+    "bbox": [
+      325,
+      726,
+      336,
+      765
+    ],
+    "sourceText": "18%"
+  },
+  "taxAmount": {
+    "value": "INR 1,710.00",
+    "modelConfidence": 0.99,
+    "bbox": [
+      325,
+      822,
+      336,
+      918
+    ],
+    "sourceText": "INR 1,710.00"
+  },
+  "total": {
+    "value": "INR 11,210.00",
+    "modelConfidence": 0.99,
+    "bbox": [
+      340,
+      812,
+      351,
+      918
+    ],
+    "sourceText": "INR 11,210.00"
+  },
+  "lineItems": [
+    {
+      "description": {
+        "value": "Widget A",
+        "modelConfidence": 0.99,
+        "bbox": [
+          267,
+          81,
+          278,
+          150
+        ],
+        "sourceText": "Widget A"
+      },
+      "quantity": {
+        "value": "10",
+        "modelConfidence": 0.99,
+        "bbox": [
+          267,
+          235,
+          277,
+          252
+        ],
+        "sourceText": "10"
+      },
+      "unitPrice": {
+        "value": "500.00",
+        "modelConfidence": 0.99,
+        "bbox": [
+          267,
+          287,
+          277,
+          339
+        ],
+        "sourceText": "500.00"
+      },
+      "lineAmount": {
+        "value": "5,000.00",
+        "modelConfidence": 0.99,
+        "bbox": [
+          267,
+          360,
+          278,
+          424
+        ],
+        "sourceText": "5,000.00"
+      }
+    },
+    {
+      "description": {
+        "value": "Gadget B",
+        "modelConfidence": 0.99,
+        "bbox": [
+          282,
+          81,
+          294,
+          150
+        ],
+        "sourceText": "Gadget B"
+      },
+      "quantity": {
+        "value": "5",
+        "modelConfidence": 0.99,
+        "bbox": [
+          282,
+          243,
+          292,
+          252
+        ],
+        "sourceText": "5"
+      },
+      "unitPrice": {
+        "value": "900.00",
+        "modelConfidence": 0.99,
+        "bbox": [
+          282,
+          287,
+          292,
+          339
+        ],
+        "sourceText": "900.00"
+      },
+      "lineAmount": {
+        "value": "4,500.00",
+        "modelConfidence": 0.99,
+        "bbox": [
+          282,
+          360,
+          293,
+          424
+        ],
+        "sourceText": "4,500.00"
+      }
+    }
+  ]
+}
