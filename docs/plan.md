@@ -78,25 +78,44 @@ Trusted store  ──►  [STRETCH] query layer (resolved query + exact rows, no
 
 ### Data model (Prisma sketch)
 
+Each field is stored twice (see [decisions D9]): a `*Field` JSON holding the full trust
+data, plus a plain indexed column for the searchable subset (vendor, total, date).
+
 ```prisma
 model Invoice {
   id          String    @id @default(cuid())
   fileUrl     String
-  status      String    // processing | needs_review | trusted | failed
-  vendorName  Field?    // Field = value + confidence + bbox + flags (embedded JSON)
-  vendorGSTIN Field?
-  invoiceNo   Field?
-  invoiceDate Field?
-  dueDate     Field?
-  currency    Field?
-  subtotal    Field?
-  taxRate     Field?
-  taxAmount   Field?
-  total       Field?
+  status      String    @default("processing") // processing | needs_review | trusted | failed
+
+  // Searchable projection (D9): typed + indexed, mirrored from the *Field JSON on write
+  vendorName  String?
+  total       Decimal?  @db.Decimal(14, 2)
+  invoiceDate DateTime?
+
+  // Per-field trust JSON (D2): { value, modelConfidence, confidence, bbox, flags[] }
+  vendorNameField  Json?
+  vendorGSTINField Json?
+  invoiceNoField   Json?
+  invoiceDateField Json?
+  dueDateField     Json?
+  currencyField    Json?
+  subtotalField    Json?
+  taxRateField     Json?
+  taxAmountField   Json?
+  totalField       Json?
+
   lineItems   LineItem[]
   createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([status])
+  @@index([vendorName])
+  @@index([total])
+  @@index([invoiceDate])
+  @@index([createdAt])
 }
-// Field stored as JSON: { value, modelConfidence, confidence, bbox, flags[] }
+// LineItem: descriptionField / quantityField / unitPriceField / lineAmountField (Json)
+// + position; not searched directly in D4, so no typed projection columns.
 ```
 
 ---

@@ -261,3 +261,61 @@ before you can build" blocker for a solo 5-day build.
 **What I deliberately cut:** paid Claude vision, OCR+parsing, and local models — each either
 adds cost/setup or loses quality without strengthening the trust story (the north-star test
 from the plan). The modular seam keeps all three as drop-in options if constraints change.
+
+---
+
+## D9 — Denormalize searchable values alongside the per-field trust JSON
+
+**The decision:** store each searchable field **twice** in the `Invoice` row — a per-field
+trust JSON (`<field>Field: Json` holding `{ value, modelConfidence, confidence, bbox,
+flags[] }`) *and* a plain, indexed, typed column for the searchable subset (`vendorName:
+String`, `total: Decimal`, `invoiceDate: DateTime`). `status` was already a top-level String.
+
+**The alternatives:**
+- **JSON-only (original plan sketch)** — every field lives solely in its trust JSON. Query
+  (D4) then has to filter *inside* JSON: Postgres JSON filtering is clumsy, can't cleanly do
+  numeric range (amount) or date comparison, and can't be indexed → slow, awkward query code.
+- **Typed-columns-only** — drop the JSON, keep just typed values. Loses the confidence, bbox,
+  and flags per field — i.e. loses the entire trust layer (D2). Non-starter.
+
+**The reasoning:** D4 makes structured search (filter by vendor, amount range, date, status)
+a *core* deliverable, not a stretch. That requires those values to be first-class,
+indexable columns. But D2's trust core requires the rich per-field metadata. The two needs
+don't fit one representation, so store both: JSON for trust detail, typed columns for the
+queryable projection — the standard "rich metadata + searchable projection" pattern. Keeps
+D4 query code trivial and fast, and leaves the trust thesis fully intact.
+
+**Tradeoffs accepted:** small duplication — the extracted value is mirrored into both the
+JSON and the typed column, so the writer sets both from the same source in one place. Worth
+it for indexed, clean search. Cheap to adopt now (no data yet, `db push` only).
+
+**What I deliberately cut:** JSON-path querying for the searchable fields, and any
+typed-only design that would drop trust metadata.
+
+---
+
+## D10 — Neon: pooled connection for the app, direct for migrations
+
+**The decision:** point the app's runtime `DATABASE_URL` at Neon's **pooled** endpoint
+(`-pooler` host, via the Prisma `pg` driver adapter), and add a separate non-pooled
+`DIRECT_URL` (`directUrl` in `prisma.config.ts`) used only by `prisma migrate` / `db push`.
+
+**The alternatives:**
+- **Direct-only (simplest)** — one non-pooled URL for everything. Fine for a demo, but on
+  serverless (Vercel) many function instances each open a direct connection → connection
+  exhaustion; not production-shaped.
+- **Pooled-only** — one pooled URL for everything. The app is happy, but `migrate` / `db
+  push` flake or hang: Neon's pooler (PgBouncer, transaction mode) can't hold the
+  session-level locks the migrate engine needs. This is the classic Neon+Prisma trap.
+
+**The reasoning:** the two access patterns want opposite things. Runtime (serverless, many
+short-lived connections) wants pooling; migrations (long session, advisory locks) want a
+direct connection. Splitting them is the documented Neon+Prisma setup and costs only one
+extra env var plus one config line — minimal, not "unnecessary complexity," and it avoids a
+gotcha we'd otherwise hit later under load or on the first `migrate dev`.
+
+**Tradeoffs accepted:** one extra env var (`DIRECT_URL`) to manage. (`db push` on the small
+schema happened to succeed over the pooler too, but `directUrl` is wired correctly for
+`migrate dev` going forward.)
+
+**What I deliberately cut:** direct-only and pooled-only single-URL setups.

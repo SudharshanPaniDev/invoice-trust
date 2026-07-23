@@ -1,7 +1,10 @@
-// Invoice Trust Layer — data model (see docs/plan.md, decisions D2/D3/D7)
-// Each extracted field is stored as an embedded JSON "Field":
-//   { value, modelConfidence, confidence, bbox, flags[] }
-// confidence is EARNED by validation (D2), never the model's self-report.
+// Invoice Trust Layer — data model (see docs/plan.md, decisions D2/D3/D7/D9)
+//
+// Each extracted field is stored TWICE (D9):
+//   - `<field>Field` JSON: { value, modelConfidence, confidence, bbox, flags[] }
+//     the trust core (D2) — confidence is EARNED by validation, never self-reported.
+//   - a plain typed column for the SEARCHABLE subset (vendorName, total, invoiceDate),
+//     indexed for fast structured query (D4). Value mirrored from the JSON on write.
 
 generator client {
   provider = "prisma-client"
@@ -19,17 +22,22 @@ model Invoice {
   // Lifecycle: processing | needs_review | trusted | failed
   status String @default("processing")
 
-  // Per-field trust JSON (value + confidence + bbox + flags). Nullable until extracted.
-  vendorName  Json?
-  vendorGSTIN Json?
-  invoiceNo   Json?
-  invoiceDate Json?
-  dueDate     Json?
-  currency    Json?
-  subtotal    Json?
-  taxRate     Json?
-  taxAmount   Json?
-  total       Json?
+  // --- Searchable projection (D9): typed, indexed, filled from the *Field JSON ---
+  vendorName  String?
+  total       Decimal? @db.Decimal(14, 2)
+  invoiceDate DateTime?
+
+  // --- Per-field trust JSON (D2): { value, modelConfidence, confidence, bbox, flags[] } ---
+  vendorNameField  Json?
+  vendorGSTINField Json?
+  invoiceNoField   Json?
+  invoiceDateField Json?
+  dueDateField     Json?
+  currencyField    Json?
+  subtotalField    Json?
+  taxRateField     Json?
+  taxAmountField   Json?
+  totalField       Json?
 
   lineItems LineItem[]
 
@@ -37,6 +45,10 @@ model Invoice {
   updatedAt DateTime @updatedAt
 
   @@index([status])
+  @@index([vendorName])
+  @@index([total])
+  @@index([invoiceDate])
+  @@index([createdAt])
 }
 
 model LineItem {
@@ -45,11 +57,12 @@ model LineItem {
   invoiceId String
   position  Int // order on the invoice
 
-  // Per-field trust JSON, same shape as Invoice fields.
-  description Json?
-  quantity    Json?
-  unitPrice   Json?
-  lineAmount  Json?
+  // Per-field trust JSON, same shape as Invoice fields (line items aren't
+  // searched directly in D4, so no typed projection columns here).
+  descriptionField Json?
+  quantityField    Json?
+  unitPriceField   Json?
+  lineAmountField  Json?
 
   @@index([invoiceId])
 }
