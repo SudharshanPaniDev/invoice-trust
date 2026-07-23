@@ -475,3 +475,34 @@ be fast across many rows, add a cached column then.
 
 **What I deliberately cut:** UI-only trust gating; a persisted overall-trust/confidence
 column as the source of truth.
+
+---
+
+## D15 — Function-to-form: the UI stays deliberately plain until the core is done
+
+**The decision:** keep the UI intentionally minimal (plain tables, a couple of colors, no
+visual design) while building, and treat UI/UX polish as a **single dedicated pass at the
+end**, after the functional core (extraction, trust engine, journey, query, correction) is
+working. Function first, form later.
+
+**The alternatives:**
+- **Polish as we go** — style each screen when it's built. Rejected: screens are still
+  changing (query and inline-correction will add/alter surfaces), so styling now means
+  styling twice; and time spent on visuals is time not spent on the differentiator.
+- **Ship it plain** — never do a polish pass. Rejected: the brief values execution quality,
+  and a finance-trust product that looks unfinished undersells the work; one focused pass is
+  worth it.
+
+**The reasoning:** the evaluation weights the trust layer and execution of the hard problem;
+a beautiful shell over a shallow core would be the wrong trade on a one-day build. A plain
+but honest UI that clearly surfaces confidence, flags, and the trust gate communicates the
+thesis fine. Polishing once at the end means styling the *final* set of screens together
+(consistent look) rather than repeatedly restyling moving targets. The build owner is a
+frontend engineer (5 yrs), so the form pass is low-risk to defer — it's the comfortable part.
+
+**Tradeoffs accepted:** interim demos look bland; if the deadline is hit before the polish
+pass, the UI ships plain — an acceptable failure mode since the substance is the trust core,
+not the chrome.
+
+**What I deliberately cut:** per-screen styling during the build; any UI framework/design
+system work before the core is complete.
