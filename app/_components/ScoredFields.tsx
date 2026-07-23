@@ -61,9 +61,15 @@ function Value({
 export function ScoredFields({
   fields,
   editInvoiceId,
+  selectedField,
+  onSelectField,
 }: {
   fields: Record<string, ScoredField>;
   editInvoiceId?: string;
+  /** Currently-highlighted field key (for the provenance viewer). */
+  selectedField?: string | null;
+  /** Called when a field is clicked, to highlight its source in the document viewer. */
+  onSelectField?: (key: string) => void;
 }) {
   const lineCount = Object.keys(fields)
     .filter((k) => k.startsWith("lineItems."))
@@ -83,8 +89,15 @@ export function ScoredFields({
         <tbody>
           {FIELDS.map(([key, label]) => {
             const f = fields[key];
+            const hasSource = onSelectField && f?.bbox;
             return (
-              <tr key={key} className="border-b align-top">
+              <tr
+                key={key}
+                onClick={hasSource ? () => onSelectField(key) : undefined}
+                className={`border-b align-top ${hasSource ? "cursor-pointer" : ""} ${
+                  selectedField === key ? "bg-amber-50" : ""
+                }`}
+              >
                 <td className="py-1.5 pr-4 text-gray-500">{label}</td>
                 <td className="py-1.5 pr-4">
                   <Value editInvoiceId={editInvoiceId} fieldKey={key} f={f} />
@@ -120,11 +133,22 @@ export function ScoredFields({
                 return (
                   <tr key={i} className="border-b align-top">
                     <td className="py-1.5 pr-4 text-gray-400">{i + 1}</td>
-                    {LINE_KEYS.map((col) => (
-                      <td key={col} className="py-1.5 pr-4">
-                        <Value editInvoiceId={editInvoiceId} fieldKey={`lineItems.${i}.${col}`} f={g(col)} />
-                      </td>
-                    ))}
+                    {LINE_KEYS.map((col) => {
+                      const cellKey = `lineItems.${i}.${col}`;
+                      const cellField = g(col);
+                      const hasSource = onSelectField && cellField?.bbox;
+                      return (
+                        <td
+                          key={col}
+                          onClick={hasSource ? () => onSelectField(cellKey) : undefined}
+                          className={`py-1.5 pr-4 ${hasSource ? "cursor-pointer" : ""} ${
+                            selectedField === cellKey ? "bg-amber-50" : ""
+                          }`}
+                        >
+                          <Value editInvoiceId={editInvoiceId} fieldKey={cellKey} f={cellField} />
+                        </td>
+                      );
+                    })}
                     <td className="py-1.5 text-xs text-red-700">
                       {flags.map((flag, k) => <div key={k}>⚠ {flag}</div>)}
                     </td>

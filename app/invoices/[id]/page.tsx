@@ -2,8 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { toView, type StoredInvoice } from "@/lib/invoice-view";
-import { ScoredFields, TrustBanner } from "../../_components/ScoredFields";
+import { TrustBanner } from "../../_components/ScoredFields";
 import { MarkTrusted } from "./MarkTrusted";
+import { DetailInteractive } from "./DetailInteractive";
 
 export const dynamic = "force-dynamic";
 
@@ -47,8 +48,7 @@ export default async function InvoiceDetail({
       </div>
 
       <section className="mt-8">
-        <p className="mb-2 text-xs text-gray-400">Hover a value to edit — corrections re-validate the whole invoice.</p>
-        <ScoredFields fields={view.fields} editInvoiceId={view.id} />
+        <DetailInteractive invoiceId={view.id} fields={view.fields} hasDocument={view.hasDocument} />
       </section>
     </main>
   );

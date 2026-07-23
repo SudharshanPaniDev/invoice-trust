@@ -51,6 +51,8 @@ export interface InvoiceView {
   lineCount: number;
   openFlags: number;
   canTrust: boolean;
+  /** True only for seeded sample invoices with a stored source document (D21/D22). */
+  hasDocument: boolean;
 }
 
 export function toView(row: StoredInvoice): InvoiceView {
@@ -80,5 +82,6 @@ export function toView(row: StoredInvoice): InvoiceView {
     lineCount: lines.length,
     openFlags,
     canTrust: openFlags === 0 && row.status !== "failed",
+    hasDocument: row.fileData != null,
   };
 }
