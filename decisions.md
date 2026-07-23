@@ -367,3 +367,35 @@ starves the differentiator.
 
 **What I deliberately cut:** validation-first ordering; server-side PDF rendering for
 extraction; Flash-Lite.
+
+---
+
+## D12 — Direct URL on `config.url`, not `directUrl` (supersedes D10's mechanism)
+
+**The decision:** implement D10's pooled-app / direct-migrations split by setting
+`prisma.config.ts`'s `datasource.url` to `process.env["DIRECT_URL"] ?? process.env["DATABASE_URL"]`,
+and **not** using a `directUrl` field. D10's *intent* stands unchanged; only the mechanism
+changes.
+
+**What went wrong with D10's mechanism:** D10 said to add `directUrl` to `prisma.config.ts`.
+`prisma db push` accepted it at runtime (it ignores unknown keys), so it looked fine — but
+`next build` typechecks `prisma.config.ts`, and the Prisma 7 config type has no `directUrl`
+(only `url` / `shadowDatabaseUrl`). The build failed. The skill doc that suggested
+`directUrl` was aspirational for this SDK version.
+
+**The reasoning:** in Prisma 7 with a **driver adapter**, there are already two separate
+connections: the *app* connects through the adapter (`lib/db.ts`, pooled `DATABASE_URL`,
+serverless-safe), and `prisma.config.ts`'s `url` is used *only by the CLI* (migrate / db
+push). So the direct connection just goes on `config.url` — the CLI is exactly the thing
+that needs it. The Prisma-6 `directUrl` datasource concept is redundant here because the
+adapter URL and the CLI URL are already distinct. The `?? DATABASE_URL` fallback keeps the
+CLI working if only `DATABASE_URL` is set.
+
+**Why this is a new entry, not an edit to D10:** the decision log records real calls as they
+happened, including course corrections. D10 was a genuine (partly wrong) call; D12 is the
+correction. Keeping both shows the actual path rather than a tidied-up rewrite.
+
+**Tradeoffs accepted:** none beyond D10's (still one extra env var). Lesson banked: typecheck
+config files, don't trust that a CLI accepting a key means it's type-valid.
+
+**What I deliberately cut:** the `directUrl` config field.

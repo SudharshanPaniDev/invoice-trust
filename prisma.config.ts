@@ -9,10 +9,10 @@ export default defineConfig({
     path: "prisma/migrations",
   },
   datasource: {
-    // Pooled connection — used by the app at runtime (serverless-safe).
-    url: process.env["DATABASE_URL"],
-    // Direct (non-pooled) connection — used by migrations / db push.
-    // Neon's pooler can't hold the session locks the migrate engine needs.
-    directUrl: process.env["DIRECT_URL"],
+    // This URL is used ONLY by the Prisma CLI (migrate / db push). Prefer the
+    // direct (non-pooled) connection — Neon's pooler can't hold the session locks
+    // the migrate engine needs (D10). The app itself connects via the pg driver
+    // adapter in lib/db.ts using the pooled DATABASE_URL (serverless-safe).
+    url: process.env["DIRECT_URL"] ?? process.env["DATABASE_URL"],
   },
 });
