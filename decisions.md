@@ -749,3 +749,46 @@ shouldn't ask.
 **What I deliberately cut:** persisting any real user's uploaded document in any storage
 backend; TTL/delete-button mitigations as a substitute for not storing it at all; Vercel Blob
 for the sample-file storage (kept the file-hosting decision in Postgres instead).
+
+---
+
+## D22 — Considered encrypting the retained sample invoices, decided not to implement it
+
+**The decision:** I looked at encrypting the sample-invoice bytes at rest (AES-256-GCM, a
+key from an env var, decrypt on read) once D21 settled that a small set of my own sample
+invoices would be stored for the provenance feature. After pressure-testing it against the
+actual threat model, I'm **not implementing it** — I'm documenting it here as a recognized
+gap instead of building a hollow version of the control.
+
+**The alternatives:**
+- **Implement AES-256-GCM encryption on the sample invoice bytes** — the original plan.
+  Rejected: see reasoning below.
+- **Implement it, log it, and call it done** — rejected as dishonest engineering: doing work
+  because it "sounds like good security practice" without it addressing a real threat is
+  exactly the checkbox-security instinct I want to avoid in this project.
+
+**The reasoning:** the data this would protect is my own invented sample invoices — fake
+vendor, fake GSTIN, fake amounts. Encrypting them protects nothing real. Worse, the more
+sensitive data in this system is the *extracted fields* from real user uploads (vendor
+names, GSTINs, amounts, dates), which per D9 are stored as indexed, searchable, plaintext
+columns for every real invoice, indefinitely — D21 only stops the raw *file bytes* from
+persisting, it says nothing about the structured data pulled from them. Encrypting the
+sample files while that stays in plaintext protects the least sensitive thing in the
+database and leaves the most sensitive thing untouched right next to it — that's not a
+threat model, that's decorating a decoy. It also doesn't move the needle on user trust: a
+reviewer's actual concern is their own upload, and that's already fully resolved by D21 (it
+was never stored in the first place); encrypting my sample data touches none of the data
+path a real upload travels through. In production, encrypting retained financial documents
+is clearly the right call, because what's retained there is real. Here, applying a
+production-grade control to a non-production-grade asset just to have built it is
+cargo-culting the form of a security practice without the risk that justifies it.
+
+**Tradeoffs accepted:** the extracted structured fields from real uploads remain unencrypted
+in Postgres, which is the actually-relevant gap this exercise surfaced — noted here as a
+real, honest limitation rather than solved by the wrong fix. If this became a genuine
+production system, encryption at rest would apply to *that* data (and to any retained
+documents), with proper key management and access control — consistent with the Production
+note in D21.
+
+**What I deliberately cut:** implementing encryption for the sample invoice files; treating
+"I added a crypto function" as equivalent to "I reduced a real risk."
