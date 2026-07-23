@@ -932,3 +932,30 @@ answer, and this bug is proof that skipping it has a real cost.
 **What I deliberately cut:** patching only the specific scale-mismatch math instead of
 switching to percentages (would still be pixel-brittle to some other future scale change);
 continuing to rely on `curl`-based checks for anything with client-side visual positioning.
+
+---
+
+## D26 — UI polish gets a dedicated pass now; evals continues as an ongoing thread
+
+**The decision:** start the UI/UX polish pass (planned in D15) now, treating validation
+strengthening (a growing eval/fixture suite) as an ongoing effort picked up alongside or
+after, rather than a gate UI has to wait behind.
+
+**The alternatives:**
+- **Finish evals first, then do UI** — the naive "most important thing first" ordering.
+- **Interleave both continuously from here on**, with no dedicated focus on either.
+
+**The reasoning:** validation strengthening is open-ended by nature — there's always another
+messy invoice format or edge case to add, so it has no natural finish line. Gating a
+*finite*, boundable task (restyle the core pages to a consistent, non-generic look) behind
+an *infinite* one means the finite task never starts. This is also exactly the moment D15
+planned for: "function first, form later, one dedicated pass after the core is done." The
+core is genuinely done now — extraction, trust engine, journey, query, correction,
+provenance, three curated samples, a live deploy, and a real bug caught and fixed (D25) —
+so this is that pass, not a detour from it.
+
+**Tradeoffs accepted:** validation work pauses (or slows) while UI gets focused attention;
+mitigated by treating it as "continues alongside/after," not "abandoned" — nothing about
+this decision closes the door on adding more fixtures or tightening rules later.
+
+**What I deliberately cut:** finishing the eval/fixture suite before starting any UI work.
