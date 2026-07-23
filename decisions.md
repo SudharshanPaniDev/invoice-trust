@@ -684,50 +684,64 @@ of normalizing to one canonical code first.
 
 ---
 
-## D21 — Never persist a real user's uploaded document; provenance runs on our own samples only
+## D21 — Never persist a real user's uploaded document; provenance runs on my own samples only
 
 **The decision:** a real user's uploaded invoice is **never persisted** anywhere — file
 bytes are used only in-memory for the Gemini extraction call, then discarded, exactly as
 today. If/when provenance (click a field → highlight its source on the document) is built,
-it demos against a small set of **our own synthetic sample invoices**, stored once by us
+it demos against a small set of **my own synthetic sample invoices**, stored once by me
 (Postgres `Bytes`/`bytea` column, not Vercel Blob — see reasoning). The "upload your own
 invoice" flow and the "see provenance in action" flow are kept as two separate paths on
 purpose, so they never share a file.
 
+**Production note:** a real financial platform would normally retain the source document —
+usually in encrypted object storage — to support audits, regulatory retention requirements,
+dispute resolution, and reprocessing if extraction logic changes later. That retention is
+justified there by controls this deployment doesn't have: access control, audit logging, and
+often contractual or regulatory obligations. I'm deliberately departing from that default
+here because this is a public, unauthenticated assessment deployment without those controls
+— not because retention is the wrong choice in general.
+
 **The alternatives:**
 - **Store every upload in Vercel Blob to enable provenance for any file** — this was the
   original plan (plan.md's stack table, and the direction D11 deferred). Rejected once
-  actually reasoned through: a real person's document would then persist indefinitely under
-  the developer's control, downloadable, until manually deleted — a bigger, more concrete
-  exposure than the transient Gemini-inference risk already accepted in D8/D18. An
-  interviewer/reviewer being asked to trust a stranger with their real invoice long-term is a
-  reasonable thing to refuse, and the product shouldn't ask for that trust just to show a UI
-  feature.
+  actually reasoned through: a real person's document would then remain accessible under my
+  storage credentials until explicitly deleted — a bigger, more concrete exposure than the
+  transient Gemini-inference risk already accepted in D8/D18. Asking an anonymous visitor to
+  trust an unaudited, single-operator deployment with a persistent copy of their real invoice
+  is a reasonable basis for them to decline, and it's a disproportionate ask in exchange for
+  demonstrating a single UI capability.
 - **Same idea, but store in Postgres instead of Blob** — considered as a pure storage-tech
   swap. Correctly identified as **not fixing the actual problem**: whether the file lives in
   Blob or in the database, it's the same category of exposure (persisted under my control).
   Swapping storage backends was a red herring for the trust question, though it's still the
-  right call for the *separate* question of where to keep files we do choose to persist (see
+  right call for the *separate* question of where to keep files I do choose to persist (see
   below).
 - **Add a manual "delete my file" button / short TTL on Blob** — rejected as a mitigation,
-  not a fix: it still requires trusting the developer to have implemented and honored it
-  correctly, and still means the file existed on someone else's infrastructure in the
-  meantime. Simpler and stronger to just never store it.
+  not a fix: it still requires trusting that I've implemented and honored it correctly, and
+  still means the file existed on someone else's infrastructure in the meantime. Simpler and
+  stronger to just never store it.
 
-**The reasoning:** the deploy is public and unauthenticated (D18); asking anonymous visitors
-to hand over real financial documents for persistent storage — just so a demo feature can
-show off — is the wrong trade. Splitting "extract from *your* file" (ephemeral, as now) from
-"see provenance on *our* file" (a canned example we already own and chose to share)
-preserves the differentiator (provenance) without ever asking a stranger to trust us with
-their real data long-term. This is a stronger and more honest posture than any technical
-mitigation (TTL, delete button) because there's no promise to keep — the exposure never
-exists in the first place.
+**The reasoning:** this comes down to data minimization — keep only the data a feature
+actually needs, and extraction only needs the file transiently, not permanently. Given that,
+the right default is not retaining the document at all, regardless of who's operating the
+system. Encryption at rest is a mitigation for a file I've *already decided* to keep; it
+doesn't answer whether to keep it in the first place. In this deployment specifically
+there's also no separation between the person who'd implement that encryption and whoever
+could invoke decryption — a gap an organization's access controls would normally close —
+which is a supporting reason encryption isn't a substitute for minimization here, not the
+main reason minimization is right. Splitting "extract from *your* file" (ephemeral, as now)
+from "see provenance on *my* file" (a canned example I already own and chose to share)
+preserves the differentiator (provenance) without asking a stranger to trust me with their
+real data long-term. This eliminates the retention risk outright rather than mitigating it —
+a stronger property than any partial control like a TTL or delete button.
 
 **Why Postgres over Blob for the sample files specifically:** no second external service or
-signup; deleting the sample invoice's row also deletes its file (no orphaned blobs to leak
-or forget about) — genuinely simpler, independent of the trust question above.
+signup; deleting the sample invoice's row also deletes its file — no orphaned files
+requiring separate cleanup or lifecycle tracking — genuinely simpler, independent of the
+trust question above.
 
-**Tradeoffs accepted:** provenance can only ever be demonstrated on our pre-chosen sample
+**Tradeoffs accepted:** provenance can only ever be demonstrated on my pre-chosen sample
 invoices, never on whatever a visitor happens to upload — a real limitation on the "wow"
 factor of a live demo, accepted because the alternative asks something of users the product
 shouldn't ask.
