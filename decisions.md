@@ -825,3 +825,53 @@ scale (a handful of KB-sized sample PDFs).
 or pinning/downgrading the adapter version to find one without the bug — not worth the time
 against a one-line, fully verified workaround (confirmed byte-for-byte round-trip against
 the original file).
+
+---
+
+## D24 — Three curated samples, hand-authored ground truth, clearly badged in the UI
+
+**The decision:** expand the seeded sample set from one to three, each demonstrating a
+distinct trust outcome: `invoice-01` (invalid GSTIN, from the real Gemini extraction, D11) —
+unchanged; `sample-clean` (every check passes, immediately trustable) and `sample-mismatch`
+(subtotal + tax ≠ total, blocks trust) — both new. For the two new samples, I generated a
+real PDF (pdfkit) but **hand-authored the extracted JSON** as the ground truth fed into
+`scoreInvoice`, rather than running another live Gemini call. Every sample also gets a
+visible **"📄 sample"** badge — on the invoices list and the detail page — wherever
+`fileData` is present, so a reviewer can never mistake a curated example for a real
+submission.
+
+**The alternatives:**
+- **Run live Gemini extraction on the two new PDFs too** (matching how `invoice-01` was
+  captured) — rejected for these two specifically. Real extraction is non-deterministic
+  enough that I couldn't *guarantee* "clean" reads as fully clean or "mismatch" trips
+  exactly the intended rule — and that reliability is the entire point of these two
+  samples. `invoice-01` already proves real-extraction quality (further reinforced by the
+  real bill test in D20); these two exist to reliably demonstrate the *rules engine's*
+  designed behavior, a different job better served by deterministic ground truth.
+- **A 4th sample specifically for "missing/invalid field"** — rejected: `invoice-01`
+  already demonstrates this outcome (its GSTIN checksum fails), so a new file would be
+  redundant. Reusing it keeps exactly one sample per requested outcome.
+- **No UI marking, rely on `hasDocument` alone as an implicit signal** — rejected: a
+  reviewer clicking through invoices has no reason to know that "has a document preview"
+  means "curated by me," and that context matters for interpreting the results correctly.
+
+**The reasoning:** hand-authoring these two fixtures still exercises the exact same code
+path as everything else (`parseExtraction` → `scoreInvoice` → `storeSampleInvoice`) — the
+"decision" here is only about *which extraction produced the input JSON*, not about
+special-casing the samples in the app. I verified each hand-authored fixture against its
+intended outcome with dedicated tests before seeding, the same discipline used everywhere
+else in this project (see `tests/fixture-samples.test.ts`). One thing the test caught: my
+first assumption that a `total` mismatch would flag only the `total` field was wrong — the
+`total.sum` rule correctly floors *all three* fields it touches (subtotal, tax, total),
+since the engine can't know which number is actually wrong. That's the rule engine behaving
+correctly; I fixed my test expectations, not the app.
+
+**Tradeoffs accepted:** the two hand-authored samples' bboxes are pdfkit-line-derived
+estimates (tracked real y-positions, full-line-width x-ranges), not pixel-perfect per-value
+extraction like Gemini would produce — good enough to land the provenance highlight over
+the correct line, not tuned to word-level precision. Acceptable since the goal is
+demonstrating the provenance *concept* reliably, not re-proving extraction fidelity
+(already proven elsewhere).
+
+**What I deliberately cut:** a 4th sample invoice; live Gemini extraction for the two new
+fixtures; leaving the samples visually indistinguishable from real submissions.

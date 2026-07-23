@@ -12,11 +12,26 @@ import { parseExtraction } from "../lib/schema";
 import { scoreInvoice } from "../lib/validation/confidence";
 import { storeSampleInvoice } from "../lib/store";
 
+// Three samples, each demonstrating a distinct trust outcome (D24):
+// invalid GSTIN (real Gemini extraction, D11) / clean-all-pass / arithmetic mismatch
+// (both hand-authored ground truth, D24 — extraction realism is already proven by the
+// first sample + the real bill tested in D20; these two exist to reliably demonstrate
+// designed rule outcomes, not to re-test extraction accuracy).
 const SAMPLES = [
   {
     fileUrl: "sample-invoice-01.pdf",
     pdfPath: "tests/fixtures/invoice-01.pdf",
     extractedPath: "tests/fixtures/invoice-01.extracted.json",
+  },
+  {
+    fileUrl: "sample-clean.pdf",
+    pdfPath: "tests/fixtures/sample-clean.pdf",
+    extractedPath: "tests/fixtures/sample-clean.extracted.json",
+  },
+  {
+    fileUrl: "sample-mismatch.pdf",
+    pdfPath: "tests/fixtures/sample-mismatch.pdf",
+    extractedPath: "tests/fixtures/sample-mismatch.extracted.json",
   },
 ];
 

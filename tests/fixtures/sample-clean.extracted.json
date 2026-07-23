@@ -1,0 +1,91 @@
+{
+  "isInvoice": true,
+  "vendorName": {
+    "value": "Bright Consulting LLP",
+    "modelConfidence": 0.98,
+    "bbox": [107, 82, 122, 376],
+    "sourceText": "Bright Consulting LLP"
+  },
+  "vendorGSTIN": {
+    "value": "27AAPFU0939F1ZV",
+    "modelConfidence": 0.98,
+    "bbox": [122, 82, 136, 376],
+    "sourceText": "GSTIN: 27AAPFU0939F1ZV"
+  },
+  "invoiceNo": {
+    "value": "INV-2026-1001",
+    "modelConfidence": 0.97,
+    "bbox": [165, 82, 180, 408],
+    "sourceText": "Invoice No: INV-2026-1001"
+  },
+  "invoiceDate": {
+    "value": "2026-07-10",
+    "modelConfidence": 0.98,
+    "bbox": [180, 82, 194, 392],
+    "sourceText": "Invoice Date: 2026-07-10"
+  },
+  "dueDate": {
+    "value": "2026-08-09",
+    "modelConfidence": 0.98,
+    "bbox": [194, 82, 209, 359],
+    "sourceText": "Due Date: 2026-08-09"
+  },
+  "currency": {
+    "value": "INR",
+    "modelConfidence": 0.97,
+    "bbox": [297, 523, 311, 918],
+    "sourceText": "INR 20,000.00"
+  },
+  "subtotal": {
+    "value": "INR 20,000.00",
+    "modelConfidence": 0.98,
+    "bbox": [297, 523, 311, 918],
+    "sourceText": "Subtotal: INR 20,000.00"
+  },
+  "taxRate": {
+    "value": "18%",
+    "modelConfidence": 0.97,
+    "bbox": [311, 523, 326, 918],
+    "sourceText": "GST @ 18%"
+  },
+  "taxAmount": {
+    "value": "INR 3,600.00",
+    "modelConfidence": 0.98,
+    "bbox": [311, 523, 326, 918],
+    "sourceText": "GST @ 18%: INR 3,600.00"
+  },
+  "total": {
+    "value": "INR 23,600.00",
+    "modelConfidence": 0.98,
+    "bbox": [326, 523, 340, 918],
+    "sourceText": "Total: INR 23,600.00"
+  },
+  "lineItems": [
+    {
+      "description": {
+        "value": "Advisory Services",
+        "modelConfidence": 0.97,
+        "bbox": [267, 82, 282, 300],
+        "sourceText": "Advisory Services"
+      },
+      "quantity": {
+        "value": "1",
+        "modelConfidence": 0.97,
+        "bbox": [267, 300, 282, 340],
+        "sourceText": "1"
+      },
+      "unitPrice": {
+        "value": "20,000.00",
+        "modelConfidence": 0.97,
+        "bbox": [267, 340, 282, 500],
+        "sourceText": "20,000.00"
+      },
+      "lineAmount": {
+        "value": "20,000.00",
+        "modelConfidence": 0.97,
+        "bbox": [267, 600, 282, 817],
+        "sourceText": "20,000.00"
+      }
+    }
+  ]
+}

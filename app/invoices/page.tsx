@@ -33,6 +33,7 @@ export default async function InvoicesPage({
       total: true,
       invoiceDate: true,
       status: true,
+      fileData: true,
     },
   });
 
@@ -103,6 +104,7 @@ export default async function InvoicesPage({
               <th className="py-2 pr-4 font-normal">Date</th>
               <th className="py-2 pr-4 font-normal">Total</th>
               <th className="py-2 pr-4 font-normal">Status</th>
+              <th className="py-2 pr-4 font-normal"></th>
               <th className="py-2 font-normal"></th>
             </tr>
           </thead>
@@ -116,6 +118,16 @@ export default async function InvoicesPage({
                   <span className={`rounded px-2 py-0.5 text-xs font-medium ${badge(inv.status)}`}>
                     {inv.status.replace("_", " ")}
                   </span>
+                </td>
+                <td className="py-2 pr-4">
+                  {inv.fileData != null && (
+                    <span
+                      title="Curated sample invoice, not a real submission"
+                      className="rounded bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700"
+                    >
+                      📄 sample
+                    </span>
+                  )}
                 </td>
                 <td className="py-2">
                   <Link href={`/invoices/${inv.id}`} className="text-blue-600 hover:underline">open →</Link>

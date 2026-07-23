@@ -1,0 +1,117 @@
+{
+  "isInvoice": true,
+  "vendorName": {
+    "value": "Nimbus Traders",
+    "modelConfidence": 0.98,
+    "bbox": [107, 82, 122, 327],
+    "sourceText": "Nimbus Traders"
+  },
+  "vendorGSTIN": {
+    "value": "24AAACC1206D1ZM",
+    "modelConfidence": 0.98,
+    "bbox": [122, 82, 136, 376],
+    "sourceText": "GSTIN: 24AAACC1206D1ZM"
+  },
+  "invoiceNo": {
+    "value": "INV-2026-2002",
+    "modelConfidence": 0.97,
+    "bbox": [165, 82, 180, 408],
+    "sourceText": "Invoice No: INV-2026-2002"
+  },
+  "invoiceDate": {
+    "value": "2026-07-12",
+    "modelConfidence": 0.98,
+    "bbox": [180, 82, 194, 392],
+    "sourceText": "Invoice Date: 2026-07-12"
+  },
+  "dueDate": {
+    "value": "2026-08-11",
+    "modelConfidence": 0.98,
+    "bbox": [194, 82, 209, 359],
+    "sourceText": "Due Date: 2026-08-11"
+  },
+  "currency": {
+    "value": "INR",
+    "modelConfidence": 0.97,
+    "bbox": [311, 523, 326, 918],
+    "sourceText": "INR 15,000.00"
+  },
+  "subtotal": {
+    "value": "INR 15,000.00",
+    "modelConfidence": 0.98,
+    "bbox": [311, 523, 326, 918],
+    "sourceText": "Subtotal: INR 15,000.00"
+  },
+  "taxRate": {
+    "value": "18%",
+    "modelConfidence": 0.97,
+    "bbox": [326, 523, 340, 918],
+    "sourceText": "GST @ 18%"
+  },
+  "taxAmount": {
+    "value": "INR 2,700.00",
+    "modelConfidence": 0.97,
+    "bbox": [326, 523, 340, 918],
+    "sourceText": "GST @ 18%: INR 2,700.00"
+  },
+  "total": {
+    "value": "INR 17,000.00",
+    "modelConfidence": 0.9,
+    "bbox": [340, 523, 355, 918],
+    "sourceText": "Total: INR 17,000.00"
+  },
+  "lineItems": [
+    {
+      "description": {
+        "value": "Product X",
+        "modelConfidence": 0.97,
+        "bbox": [267, 82, 282, 300],
+        "sourceText": "Product X"
+      },
+      "quantity": {
+        "value": "3",
+        "modelConfidence": 0.97,
+        "bbox": [267, 300, 282, 340],
+        "sourceText": "3"
+      },
+      "unitPrice": {
+        "value": "4,000.00",
+        "modelConfidence": 0.97,
+        "bbox": [267, 340, 282, 500],
+        "sourceText": "4,000.00"
+      },
+      "lineAmount": {
+        "value": "12,000.00",
+        "modelConfidence": 0.97,
+        "bbox": [267, 600, 282, 817],
+        "sourceText": "12,000.00"
+      }
+    },
+    {
+      "description": {
+        "value": "Product Y",
+        "modelConfidence": 0.97,
+        "bbox": [282, 82, 297, 300],
+        "sourceText": "Product Y"
+      },
+      "quantity": {
+        "value": "1",
+        "modelConfidence": 0.97,
+        "bbox": [282, 300, 297, 340],
+        "sourceText": "1"
+      },
+      "unitPrice": {
+        "value": "3,000.00",
+        "modelConfidence": 0.97,
+        "bbox": [282, 340, 297, 500],
+        "sourceText": "3,000.00"
+      },
+      "lineAmount": {
+        "value": "3,000.00",
+        "modelConfidence": 0.97,
+        "bbox": [282, 600, 297, 817],
+        "sourceText": "3,000.00"
+      }
+    }
+  ]
+}

@@ -34,6 +34,11 @@ export default async function InvoiceDetail({
         <code>{view.id}</code> · status <span className="font-medium">{view.status}</span> ·{" "}
         {view.createdAt.toISOString().slice(0, 10)}
       </p>
+      {view.hasDocument && (
+        <p className="mt-2 inline-block rounded bg-indigo-50 px-2 py-1 text-xs font-medium text-indigo-700">
+          📄 Sample invoice — curated example, not a real submission (see decisions.md D21/D24)
+        </p>
+      )}
 
       <div className="mt-5">
         <TrustBanner canTrust={view.canTrust} openFlags={view.openFlags} />
