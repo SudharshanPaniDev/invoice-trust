@@ -1293,3 +1293,41 @@ the `scored` payload from the API response, so the client does slightly less wor
 
 **What I deliberately cut:** patching the inline result for editing/scroll parity instead of
 removing it; keeping a "preview" framing to justify the inline view's limitations.
+
+---
+
+## D33 — Added SCOPE.md: the scope was locked early, it just never got its own document
+
+**The decision:** added `SCOPE.md` — a product-level summary of what this system does and
+doesn't do (capabilities, functional and non-functional requirements, user journeys,
+assumptions), written in the style of a formal FRD. It sits alongside `decisions.md`, not in
+place of it.
+
+**Why this needed saying plainly:** the scope itself was never actually undecided — D1 picked
+the problem and the depth-over-breadth angle, D3 fixed one document type, D4 fixed query as
+core-not-stretch, D9 fixed the data model, D18/D21 fixed the privacy/auth posture. Every
+boundary this system has was decided early and deliberately, each with its own reasoning
+already on record. What was missing wasn't the scope decision — it was a single place that
+states the *outcome* of all those decisions without needing to read 32 entries of narrative
+to reconstruct it. `decisions.md` is the journey; nothing in it was ever in doubt by the time
+each entry landed, but it's structured as a log, not a summary, so "what exactly is this
+system scoped to do" had no single answer to point at.
+
+**The alternatives:**
+- **Leave scope living only in decisions.md** — rejected: a reviewer (or me, six months from
+  now) shouldn't have to read the whole decision history to answer "what does this product
+  actually do." That's a real gap `decisions.md`'s format can't close on its own, regardless
+  of how completely it already covers the reasoning.
+- **Rewrite decisions.md into a scope doc** — rejected: they answer different questions (the
+  *why*, in order, vs. the *what*, once) and collapsing them would weaken both.
+
+**The reasoning:** the two documents are complementary by design, stated explicitly at the
+top of `SCOPE.md` — `decisions.md` for why something was built this way, `SCOPE.md` for what
+was ultimately built. `SCOPE.md` states plainly that it's retrospective: it did not exist
+before or during development, and describes an outcome that was already locked in through
+the decisions above, not a plan drafted in advance.
+
+**Tradeoffs accepted:** none — this is pure documentation, no code or behavior changed.
+
+**What I deliberately cut:** presenting `SCOPE.md` as if it were an upfront planning artifact
+that preceded the build — it wasn't, and says so.
