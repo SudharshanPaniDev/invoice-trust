@@ -1,0 +1,14 @@
+name: Keep Neon warm
+
+on:
+  schedule:
+    # Every 4 minutes — safely under Neon's free-tier ~5min auto-suspend window.
+    - cron: "*/4 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping health endpoint
+        run: curl -fsS https://invoice-trust.vercel.app/api/health

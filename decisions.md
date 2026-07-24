@@ -1198,3 +1198,51 @@ not a tidied-up one.
 **What I deliberately cut:** excluding `scripts/` from the typecheck scope as a workaround —
 rejected; the actual code had actual type errors, the fix is fixing them, not hiding the
 script from the checker.
+
+---
+
+## D31 — Perceived navigation lag: two separate causes, two separate fixes
+
+**The decision:** investigated a report that every click (Upload, Invoices, an invoice
+detail) felt slow and non-optimistic. Measured it rather than guessed — timed repeated
+requests to `/`, `/invoices`, and `/invoices/[id]` in different orders. The pattern was
+identical regardless of which route went first: whichever request was first after any gap
+took 800–1200ms; every request right after took 100–290ms. That ruled out a per-route code
+problem (it wasn't the home page's query, or the detail page's, being slow — it was
+*whichever one happened to go first*) and pointed at connection/compute state instead. Root
+cause: Neon's free-tier compute auto-suspends after a few idle minutes, and the first query
+after suspension pays a wake-up tax. Separately — and independent of that — found there was
+no `loading.tsx` anywhere in the app, so React had nothing to show during a navigation's
+server round-trip; the screen just sat frozen until the whole thing resolved, which reads as
+sluggish even when the underlying request is fast.
+
+**The alternatives:**
+- **Upgrade Neon off the free tier** to disable auto-suspend — the direct fix for the cold
+  start, ruled out immediately: no spend, explicit constraint.
+- **Vercel Cron** to ping a keep-alive endpoint — the obvious "free, built-in" option,
+  rejected once checked: Vercel's Hobby plan caps cron jobs at once per day, far too
+  infrequent to matter against a ~5 minute auto-suspend window.
+- **Do nothing about the cold start, only add `loading.tsx`** — would fix the "feels frozen"
+  complaint but leave the actual 800–1200ms wait on the first click after any gap, which is
+  most of what was being described.
+
+**The reasoning:** these are genuinely two different problems wearing the same symptom, so
+one fix each. For the cold start: GitHub Actions' free scheduled workflows are the only
+free-tier option that can actually ping often enough (every 4 minutes, safely inside Neon's
+suspend window) — added `.github/workflows/keep-warm.yml` hitting a new trivial `GET
+/api/health` route (`SELECT 1`, nothing else) on that schedule. For the frozen-screen half:
+added a `loading.tsx` per dynamic route (`/`, `/invoices`, `/invoices/[id]`), which Next.js
+shows instantly via Suspense the moment a navigation starts, filled in once the real page
+resolves — no architecture change, just the boundary Next already supports and this app
+hadn't been using anywhere.
+
+**Tradeoffs accepted:** GitHub's free scheduled workflows aren't perfectly punctual (can lag
+behind schedule under load), so an occasional cold hit is still possible — this cuts the
+*frequency* of the cold-start tax sharply, it doesn't provably eliminate every instance of it.
+Accepted as the best available zero-cost option; a paid Neon tier remains the only way to
+close that gap completely, and that trade is explicitly off the table per the no-spend
+constraint.
+
+**What I deliberately cut:** any paid Neon plan change; Vercel Cron as the ping mechanism
+(too infrequent on Hobby to help); leaving the cold-start problem unaddressed and only
+patching the loading-state half.
