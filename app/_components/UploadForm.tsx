@@ -1,19 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
-import type { ScoredInvoice } from "@/lib/validation/confidence";
-import { ScoredFields, TrustBanner } from "./ScoredFields";
+import { useRouter } from "next/navigation";
 
 interface UploadResponse {
   id: string;
   status: string;
-  scored: ScoredInvoice;
 }
 
+/** On success, redirect straight to the detail page (D32) — that's the one place a scored
+ *  invoice is actually viewable (editing, provenance, trust gate), so there's no second,
+ *  weaker read-only view to keep in sync here. */
 export function UploadForm() {
+  const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
-  const [result, setResult] = useState<UploadResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -22,22 +22,19 @@ export function UploadForm() {
     if (!file) return;
     setLoading(true);
     setError(null);
-    setResult(null);
 
     const fd = new FormData();
     fd.append("file", file);
     const res = await fetch("/api/invoices", { method: "POST", body: fd });
     const json = await res.json();
-    setLoading(false);
 
     if (!res.ok) {
+      setLoading(false);
       setError(json.error ?? "Upload failed");
       return;
     }
-    setResult(json as UploadResponse);
+    router.push(`/invoices/${(json as UploadResponse).id}`);
   }
-
-  const scored = result?.scored;
 
   return (
     <>
@@ -64,28 +61,6 @@ export function UploadForm() {
         <p className="mt-4 rounded-lg border border-danger/30 bg-danger-bg p-3 text-sm text-danger">
           {error}
         </p>
-      )}
-
-      {scored && (
-        <section className="mt-10">
-          <div className="mb-5">
-            <TrustBanner
-              canTrust={scored.overall.canTrust}
-              openFlags={scored.overall.openFlags}
-              confidence={scored.overall.confidence}
-            />
-            <p className="mt-2 text-xs text-muted">
-              Stored <code className="rounded bg-background px-1 py-0.5">{result!.id}</code> ·{" "}
-              <Link
-                href={`/invoices/${result!.id}`}
-                className="text-accent hover:text-accent-hover hover:underline"
-              >
-                open detail →
-              </Link>
-            </p>
-          </div>
-          <ScoredFields fields={scored.fields} />
-        </section>
       )}
     </>
   );

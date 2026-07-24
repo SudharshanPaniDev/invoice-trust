@@ -1246,3 +1246,50 @@ constraint.
 **What I deliberately cut:** any paid Neon plan change; Vercel Cron as the ping mechanism
 (too infrequent on Hobby to help); leaving the cold-start problem unaddressed and only
 patching the loading-state half.
+
+---
+
+## D32 — Drop the home page's inline result; redirect to the detail page instead
+
+**The decision:** after a successful upload, `UploadForm` now redirects straight to
+`/invoices/[id]` instead of rendering the scored fields inline on the home page. The home
+page goes back to being just the disclaimer, the download-samples section, and the upload
+form — nothing else.
+
+**What was wrong, caught by actually looking at a screenshot post-upload:** the inline result
+sat below the download-samples section (8 rows, added in D29), so it landed below the fold
+with no scroll-into-view — a successful extraction gave no visible feedback unless the user
+scrolled down and happened to look. Separately, the inline result used the same `ScoredFields`
+component as the detail page but never passed `editInvoiceId`, so hovering a value did
+nothing — editing only ever worked on `/invoices/[id]`. Both bugs traced to the same root
+cause: the home page was maintaining a second, weaker copy of a view `/invoices/[id]` already
+did properly (editing, the provenance viewer, the trust gate), and the two had drifted out of
+sync.
+
+**The alternatives:**
+- **Patch the inline result to parity** — pass `editInvoiceId` through, scroll to it or move
+  it above the download-samples section. Rejected: fixes today's two bugs but keeps two
+  result views to maintain in lockstep forever, and the inline one would still lack the
+  provenance/document viewer `DetailInteractive` provides, so it'd remain a permanently lesser
+  copy no matter how much parity work went in.
+- **Keep both, but make the inline one clearly explicitly "preview only, edit on the detail
+  page"** — rejected: adds an explanation for a limitation that's cheaper to just remove than
+  to justify.
+
+**The reasoning:** the app already had a canonical place to view a scored invoice —
+`/invoices/[id]` — and the home page's inline result was never more than a preview of it
+("open detail →" already existed as an escape hatch). Once the download-samples section (D29)
+pushed that preview below the fold, its cost stopped being "a bit redundant" and became "the
+thing users actually complained about." Removing it instead of patching it means there's now
+exactly one place a scored invoice is ever displayed — same principle this project already
+applies to data (D9: one source of truth, not two representations to keep in sync), just
+applied to the UI. The `loading.tsx` skeleton added in D31 is what makes the redirect feel
+immediate rather than a hard page-load interruption.
+
+**Tradeoffs accepted:** lost the ability to upload another sample without leaving the result
+page — minor, the header's "Upload" link is one click away. `UploadResponse` no longer needs
+the `scored` payload from the API response, so the client does slightly less work parsing it
+(a side benefit, not the reason for the change).
+
+**What I deliberately cut:** patching the inline result for editing/scroll parity instead of
+removing it; keeping a "preview" framing to justify the inline view's limitations.
