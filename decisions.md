@@ -1331,3 +1331,81 @@ the decisions above, not a plan drafted in advance.
 
 **What I deliberately cut:** presenting `SCOPE.md` as if it were an upfront planning artifact
 that preceded the build — it wasn't, and says so.
+
+---
+
+## D34 — Split `TrustBanner` out of `ScoredFields.tsx`; component folder convention stated
+
+**The decision:** moved `TrustBanner` into its own file, `app/_components/TrustBanner.tsx`.
+It had been living inside `ScoredFields.tsx` (212 lines, two unrelated components in one
+file) since the D27 UI pass — a real single-responsibility violation caught during a direct
+self-audit, not by any tooling. Also writing down, for the first time, the component
+placement convention this project has actually been following since D27/D29:
+
+- **Shared, cross-route components** (used by more than one page) live in
+  `app/_components/` — `AppHeader`, `DownloadSamples`, `ScoredFields`, `TrustBanner`,
+  `UploadForm`.
+- **Route-specific components** (used by exactly one page/segment) live directly inside
+  that route's folder — `DocumentViewer`, `EditableField`, `MarkTrusted`, and
+  `DetailInteractive` all live under `app/invoices/[id]/` because nothing outside that
+  route uses them.
+
+**The alternatives:**
+- **Leave `TrustBanner` where it was** — rejected: it renders a trust-status banner, not a
+  field table; bundling it with `ScoredFields` only ever happened because they were built in
+  the same pass, not because they're related.
+- **One flat `components/` folder for everything, shared or not** — rejected as the
+  convention going forward: Next.js's App Router colocation (route-specific components live
+  next to the route that uses them) is a legitimate, recommended pattern, not a shortcut, and
+  it already matches what four of this project's components were doing without anyone having
+  stated it as a rule.
+
+**The reasoning:** this project already had a consistent, defensible component-placement
+pattern — it just existed by accident of how each pass was built, not by a stated rule. That
+gap is the same shape as D33 (SCOPE.md): the decision was effectively already made, it just
+never got written down where someone auditing the codebase could find it. Splitting
+`TrustBanner` fixes the one real violation of that pattern that had crept in; stating the
+convention here means the next new component has a rule to follow instead of an implicit one
+to reverse-engineer from existing files.
+
+**Tradeoffs accepted:** none — pure refactor, one import path updated
+(`app/invoices/[id]/page.tsx`), verified with a full production build before committing.
+
+**What I deliberately cut:** a single flat components folder as the "more standard-looking"
+alternative — rejected because it would have meant moving four already-correctly-placed
+route-specific components for the sake of a convention that isn't actually better here.
+
+---
+
+## D35 — Explain the confidence ceiling instead of leaving 90%/95% looking unresolved
+
+**The decision:** added a one-line legend above the field table ("Confidence caps at 90%
+... or 95% ... — hover a badge for why") plus a per-badge `title` tooltip explaining the
+specific reason that field landed where it did (rule-verified, human-corrected-unverifiable,
+or damped model estimate).
+
+**What prompted it:** after correcting a flagged GSTIN and a vendor name, the user asked why
+the invoice still showed 95%/90% instead of something that read as fully resolved. Nothing
+was actually wrong — D13 deliberately never lets any field reach 100% (a rule passing today
+isn't "certain forever," and a human correction on an unverifiable field is strong evidence,
+not proof) — but the UI gave no indication that 90%/95% *is* this system's ceiling, so a
+correctly-functioning score looked like an unfinished one.
+
+**The alternatives:**
+- **Change the scoring so verified/corrected fields show 100%** — rejected: this would
+  reverse D13's actual thesis (nothing is ever asserted as certain) to fix a display problem,
+  not a scoring problem. The number was never wrong; the page just didn't explain it.
+- **Tooltip only, no legend** — rejected: a tooltip requires knowing there's something to
+  hover in the first place. The legend is what a first-time viewer needs; the tooltip is for
+  whoever wants the specific reason for one field.
+
+**The reasoning:** this is the same shape of gap as D25 (a real thing was happening
+correctly, but nothing made it legible) and D31/D32 (correct-but-silent behavior reads as
+broken). The fix here is purely explanatory — no scoring logic changed, only what the UI says
+about scores that were already correct.
+
+**Tradeoffs accepted:** none — verified with a full production build; no behavior changed,
+only added explanatory text and a `title` attribute.
+
+**What I deliberately cut:** touching the confidence-scoring thresholds themselves (D13
+stays exactly as designed) — the fix is communication, not recalibration.

@@ -21,11 +21,25 @@ function confColor(c: number): string {
   return "text-danger bg-danger-bg";
 }
 
+/** Explains *why* this field landed at its confidence tier — the ceiling is deliberate
+ *  (D13/D35), never 100%, but nothing on the badge itself says so without this. */
+function confidenceTitle(f: ScoredField): string {
+  if (f.flags.length > 0) return f.flags.join(" · ");
+  if (f.corrected) {
+    return "Human-corrected — no rule can verify this field further; 95% is this system's ceiling for unverifiable fields, not partial trust.";
+  }
+  if (f.verified) {
+    return "Verified by a rule (arithmetic, checksum, date order, or currency check); 90% is this system's ceiling even when a check passes.";
+  }
+  return "No rule can check this field — this is a damped model estimate, not a validated result.";
+}
+
 function Confidence({ f }: { f: ScoredField | undefined }) {
   if (!f) return <span className="text-muted">—</span>;
   const low = f.confidence < 0.5;
   return (
     <span
+      title={confidenceTitle(f)}
       className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-xs font-medium ${confColor(f.confidence)}`}
     >
       {low && <span aria-hidden="true">⚠</span>}
@@ -98,6 +112,10 @@ export function ScoredFields({
 
   return (
     <>
+      <p className="mb-2 text-xs text-muted">
+        Confidence caps at 90% (rule-verified) or 95% (human-verified) — hover a badge for
+        why. This system never claims 100%, only what's actually been checked.
+      </p>
       <table className="w-full border-collapse text-sm">
         <thead>
           <tr className="border-b border-border text-left text-muted">
@@ -181,32 +199,5 @@ export function ScoredFields({
         </>
       )}
     </>
-  );
-}
-
-export function TrustBanner({
-  canTrust,
-  openFlags,
-  confidence,
-}: {
-  canTrust: boolean;
-  openFlags: number;
-  confidence?: number;
-}) {
-  return (
-    <div
-      className={`rounded-lg border p-3 text-sm ${
-        canTrust
-          ? "border-success/30 bg-success-bg text-success"
-          : "border-warning/30 bg-warning-bg text-warning"
-      }`}
-    >
-      {canTrust
-        ? "✓ All checks passed — safe to mark trusted."
-        : `⚠ ${openFlags} open flag(s) — cannot mark trusted yet.`}
-      {confidence != null && (
-        <span className="ml-2 text-muted">overall {Math.round(confidence * 100)}%</span>
-      )}
-    </div>
   );
 }

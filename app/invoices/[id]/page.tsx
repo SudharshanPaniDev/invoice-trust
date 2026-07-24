@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
 import { toView, type StoredInvoice } from "@/lib/invoice-view";
-import { TrustBanner } from "../../_components/ScoredFields";
+import { TrustBanner } from "../../_components/TrustBanner";
 import { MarkTrusted } from "./MarkTrusted";
 import { DetailInteractive } from "./DetailInteractive";
 
