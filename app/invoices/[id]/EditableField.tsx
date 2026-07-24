@@ -44,7 +44,7 @@ export function EditableField({
         <span className="font-medium">{value ?? "—"}</span>
         <button
           onClick={() => { setDraft(value ?? ""); setEditing(true); }}
-          className="text-xs text-blue-600 opacity-0 group-hover:opacity-100 hover:underline"
+          className="text-xs text-accent opacity-0 group-hover:opacity-100 hover:underline"
         >
           edit
         </button>
@@ -59,13 +59,19 @@ export function EditableField({
         onChange={(e) => setDraft(e.target.value)}
         autoFocus
         onKeyDown={(e) => { if (e.key === "Enter") save(); if (e.key === "Escape") setEditing(false); }}
-        className="rounded border px-1.5 py-0.5 text-sm"
+        className="rounded-md border border-border bg-background px-1.5 py-0.5 text-sm"
       />
-      <button onClick={save} disabled={saving} className="rounded bg-black px-2 py-0.5 text-xs text-white disabled:opacity-40">
+      <button
+        onClick={save}
+        disabled={saving}
+        className="rounded-md bg-accent px-2 py-0.5 text-xs font-medium text-accent-foreground hover:bg-accent-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-40"
+      >
         {saving ? "…" : "save"}
       </button>
-      <button onClick={() => setEditing(false)} className="text-xs text-gray-500 hover:underline">cancel</button>
-      {error && <span className="text-xs text-red-700">{error}</span>}
+      <button onClick={() => setEditing(false)} className="text-xs text-muted hover:underline">
+        cancel
+      </button>
+      {error && <span className="text-xs text-danger">{error}</span>}
     </span>
   );
 }

@@ -1,100 +1,43 @@
-"use client";
+import { prisma } from "@/lib/db";
+import { DownloadSamples } from "./_components/DownloadSamples";
+import { UploadForm } from "./_components/UploadForm";
 
-import { useState } from "react";
-import Link from "next/link";
-import type { ScoredInvoice } from "@/lib/validation/confidence";
-import { ScoredFields, TrustBanner } from "./_components/ScoredFields";
+export const dynamic = "force-dynamic";
 
-interface UploadResponse {
-  id: string;
-  status: string;
-  scored: ScoredInvoice;
-}
+const SEEDED_SAMPLES = [
+  { fileUrl: "sample-clean.pdf", label: "Clean invoice", description: "Every check passes" },
+  { fileUrl: "sample-invoice-01.pdf", label: "Invalid GSTIN", description: "Checksum fails" },
+  { fileUrl: "sample-mismatch.pdf", label: "Arithmetic mismatch", description: "Subtotal + tax ≠ total" },
+];
 
-export default function Home() {
-  const [file, setFile] = useState<File | null>(null);
-  const [result, setResult] = useState<UploadResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!file) return;
-    setLoading(true);
-    setError(null);
-    setResult(null);
-
-    const fd = new FormData();
-    fd.append("file", file);
-    const res = await fetch("/api/invoices", { method: "POST", body: fd });
-    const json = await res.json();
-    setLoading(false);
-
-    if (!res.ok) {
-      setError(json.error ?? "Upload failed");
-      return;
-    }
-    setResult(json as UploadResponse);
-  }
-
-  const scored = result?.scored;
+export default async function Home() {
+  const rows = await prisma.invoice.findMany({
+    where: { fileUrl: { in: SEEDED_SAMPLES.map((s) => s.fileUrl) } },
+    select: { id: true, fileUrl: true },
+  });
+  const seeded = SEEDED_SAMPLES.flatMap((s) => {
+    const row = rows.find((r) => r.fileUrl === s.fileUrl);
+    return row ? [{ id: row.id, label: s.label, description: s.description }] : [];
+  });
 
   return (
-    <main className="mx-auto max-w-4xl p-8 font-sans">
-      <div className="flex items-baseline justify-between">
-        <h1 className="text-2xl font-semibold">Invoice Trust Layer</h1>
-        <Link href="/invoices" className="text-sm text-blue-600 hover:underline">
-          All invoices →
-        </Link>
-      </div>
-      <p className="mt-1 text-sm text-gray-500">
-        Upload an invoice — each field&apos;s confidence is earned by validation (sums, tax
-        math, GSTIN checksum), not claimed by the model.
+    <main className="mx-auto max-w-4xl px-8 py-10">
+      <h1 className="text-2xl font-semibold">Upload an invoice</h1>
+      <p className="mt-1 text-sm text-muted">
+        Each field&apos;s confidence is earned by validation (sums, tax math, GSTIN checksum),
+        not claimed by the model.
       </p>
 
-      <p className="mt-3 rounded border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+      <p className="mt-4 rounded-lg border border-warning/30 bg-warning-bg p-3 text-xs text-warning">
         ⚠ Demo only — this is a public, unauthenticated instance. Please upload sample or
         synthetic invoices only. Extraction uses Gemini&apos;s free tier, which may use
         submitted data to improve Google&apos;s models — do not upload real confidential
         financial documents.
       </p>
 
-      <form onSubmit={onSubmit} className="mt-6 flex items-center gap-3">
-        <input
-          type="file"
-          accept="application/pdf,image/*"
-          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-          className="text-sm"
-        />
-        <button
-          type="submit"
-          disabled={!file || loading}
-          className="rounded bg-black px-4 py-2 text-sm text-white disabled:opacity-40"
-        >
-          {loading ? "Extracting…" : "Extract"}
-        </button>
-      </form>
+      <DownloadSamples seeded={seeded} />
 
-      {error && <p className="mt-4 rounded bg-red-50 p-3 text-sm text-red-700">{error}</p>}
-
-      {scored && (
-        <section className="mt-8">
-          <div className="mb-5">
-            <TrustBanner
-              canTrust={scored.overall.canTrust}
-              openFlags={scored.overall.openFlags}
-              confidence={scored.overall.confidence}
-            />
-            <p className="mt-2 text-xs text-gray-500">
-              Stored <code>{result!.id}</code> ·{" "}
-              <Link href={`/invoices/${result!.id}`} className="text-blue-600 hover:underline">
-                open detail →
-              </Link>
-            </p>
-          </div>
-          <ScoredFields fields={scored.fields} />
-        </section>
-      )}
+      <UploadForm />
     </main>
   );
 }

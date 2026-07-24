@@ -16,17 +16,36 @@ const FIELDS: [string, string][] = [
 const LINE_KEYS = ["description", "quantity", "unitPrice", "lineAmount"];
 
 function confColor(c: number): string {
-  if (c >= 0.8) return "text-green-700 bg-green-50";
-  if (c >= 0.5) return "text-amber-700 bg-amber-50";
-  return "text-red-700 bg-red-50";
+  if (c >= 0.8) return "text-success bg-success-bg";
+  if (c >= 0.5) return "text-warning bg-warning-bg";
+  return "text-danger bg-danger-bg";
 }
 
 function Confidence({ f }: { f: ScoredField | undefined }) {
-  if (!f) return <span className="text-gray-300">—</span>;
+  if (!f) return <span className="text-muted">—</span>;
+  const low = f.confidence < 0.5;
   return (
-    <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${confColor(f.confidence)}`}>
+    <span
+      className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-xs font-medium ${confColor(f.confidence)}`}
+    >
+      {low && <span aria-hidden="true">⚠</span>}
       {Math.round(f.confidence * 100)}%{f.verified ? " ✓" : ""}
     </span>
+  );
+}
+
+/** A flag's full arithmetic/reason text can run long (e.g. "Subtotal 15000.00 + tax
+ *  2700.00 = 17700.00, but total says 17000.00") — showing that inline breaks the table's
+ *  row rhythm. `<details>` keeps the row compact (one truncated line) and reveals the full
+ *  text on click, natively keyboard- and touch-accessible (no JS, no tooltip-only text). */
+function FlagDisclosure({ flag }: { flag: string }) {
+  return (
+    <details className="cursor-pointer">
+      <summary className="max-w-[220px] truncate marker:content-none [&::-webkit-details-marker]:hidden">
+        ⚠ {flag}
+      </summary>
+      <p className="mt-1 max-w-[260px] whitespace-normal text-danger">{flag}</p>
+    </details>
   );
 }
 
@@ -40,7 +59,9 @@ function Value({
   f: ScoredField | undefined;
 }) {
   const corrected = f?.corrected ? (
-    <span className="ml-1 rounded bg-blue-50 px-1 text-[10px] text-blue-700">edited</span>
+    <span className="ml-1 rounded-full bg-border/40 px-1.5 py-0.5 text-[10px] font-medium text-muted">
+      edited
+    </span>
   ) : null;
   if (editInvoiceId) {
     return (
@@ -79,7 +100,7 @@ export function ScoredFields({
     <>
       <table className="w-full border-collapse text-sm">
         <thead>
-          <tr className="border-b text-left text-gray-500">
+          <tr className="border-b border-border text-left text-muted">
             <th className="py-1.5 pr-4 font-normal">Field</th>
             <th className="py-1.5 pr-4 font-normal">Value</th>
             <th className="py-1.5 pr-4 font-normal">Confidence</th>
@@ -94,17 +115,17 @@ export function ScoredFields({
               <tr
                 key={key}
                 onClick={hasSource ? () => onSelectField(key) : undefined}
-                className={`border-b align-top ${hasSource ? "cursor-pointer" : ""} ${
-                  selectedField === key ? "bg-amber-50" : ""
+                className={`border-b border-border align-top ${hasSource ? "cursor-pointer hover:bg-surface" : ""} ${
+                  selectedField === key ? "bg-accent/10" : ""
                 }`}
               >
-                <td className="py-1.5 pr-4 text-gray-500">{label}</td>
+                <td className="py-1.5 pr-4 text-muted">{label}</td>
                 <td className="py-1.5 pr-4">
                   <Value editInvoiceId={editInvoiceId} fieldKey={key} f={f} />
                 </td>
                 <td className="py-1.5 pr-4"><Confidence f={f} /></td>
-                <td className="py-1.5 text-xs text-red-700">
-                  {f?.flags.map((flag, i) => <div key={i}>⚠ {flag}</div>)}
+                <td className="py-1.5 text-xs text-danger">
+                  {f?.flags.map((flag, i) => <FlagDisclosure key={i} flag={flag} />)}
                 </td>
               </tr>
             );
@@ -117,7 +138,7 @@ export function ScoredFields({
           <h2 className="mt-6 mb-2 text-sm font-semibold">Line items</h2>
           <table className="w-full border-collapse text-sm">
             <thead>
-              <tr className="border-b text-left text-gray-500">
+              <tr className="border-b border-border text-left text-muted">
                 <th className="py-1.5 pr-4 font-normal">#</th>
                 <th className="py-1.5 pr-4 font-normal">Description</th>
                 <th className="py-1.5 pr-4 font-normal">Qty</th>
@@ -131,8 +152,8 @@ export function ScoredFields({
                 const g = (f: string) => fields[`lineItems.${i}.${f}`];
                 const flags = [...new Set(LINE_KEYS.flatMap((f) => g(f)?.flags ?? []))];
                 return (
-                  <tr key={i} className="border-b align-top">
-                    <td className="py-1.5 pr-4 text-gray-400">{i + 1}</td>
+                  <tr key={i} className="border-b border-border align-top">
+                    <td className="py-1.5 pr-4 text-muted">{i + 1}</td>
                     {LINE_KEYS.map((col) => {
                       const cellKey = `lineItems.${i}.${col}`;
                       const cellField = g(col);
@@ -141,16 +162,16 @@ export function ScoredFields({
                         <td
                           key={col}
                           onClick={hasSource ? () => onSelectField(cellKey) : undefined}
-                          className={`py-1.5 pr-4 ${hasSource ? "cursor-pointer" : ""} ${
-                            selectedField === cellKey ? "bg-amber-50" : ""
+                          className={`py-1.5 pr-4 ${hasSource ? "cursor-pointer hover:bg-surface" : ""} ${
+                            selectedField === cellKey ? "bg-accent/10" : ""
                           }`}
                         >
                           <Value editInvoiceId={editInvoiceId} fieldKey={cellKey} f={cellField} />
                         </td>
                       );
                     })}
-                    <td className="py-1.5 text-xs text-red-700">
-                      {flags.map((flag, k) => <div key={k}>⚠ {flag}</div>)}
+                    <td className="py-1.5 text-xs text-danger">
+                      {flags.map((flag, k) => <FlagDisclosure key={k} flag={flag} />)}
                     </td>
                   </tr>
                 );
@@ -174,15 +195,17 @@ export function TrustBanner({
 }) {
   return (
     <div
-      className={`rounded p-3 text-sm ${
-        canTrust ? "bg-green-50 text-green-800" : "bg-amber-50 text-amber-800"
+      className={`rounded-lg border p-3 text-sm ${
+        canTrust
+          ? "border-success/30 bg-success-bg text-success"
+          : "border-warning/30 bg-warning-bg text-warning"
       }`}
     >
       {canTrust
         ? "✓ All checks passed — safe to mark trusted."
         : `⚠ ${openFlags} open flag(s) — cannot mark trusted yet.`}
       {confidence != null && (
-        <span className="ml-2 text-gray-500">overall {Math.round(confidence * 100)}%</span>
+        <span className="ml-2 text-muted">overall {Math.round(confidence * 100)}%</span>
       )}
     </div>
   );

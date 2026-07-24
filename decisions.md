@@ -959,3 +959,211 @@ mitigated by treating it as "continues alongside/after," not "abandoned" — not
 this decision closes the door on adding more fixtures or tightening rules later.
 
 **What I deliberately cut:** finishing the eval/fixture suite before starting any UI work.
+
+---
+
+## D27 — UI polish pass: warm design-system tokens, Tailwind inherited (not chosen), shared header
+
+**The decision:** executed the D26 polish pass as one connected set of calls: (1) kept
+Tailwind CSS as the styling approach — it shipped as part of `create-next-app`'s default
+scaffold when D5 picked Next.js, so it was never separately evaluated against CSS Modules,
+plain CSS, or styled-components in a side-by-side sense, but keeping it was still the right
+call on its own merits: utility classes colocated with markup are faster to write and change
+than hand-rolled CSS or CSS Modules (no context-switching to a separate stylesheet, no
+inventing class names, no dead-CSS accumulation as screens change), and flexible enough to
+express the whole warm-palette token system below without fighting the tool. For a solo
+build under time pressure, that combination of speed and flexibility mattered more than
+"CSS Modules give you real scoping" or "plain CSS has no build step" — neither alternative
+would have gotten the same ground covered as fast. (2) Tailwind v4 (shipped with this Next.js version) moved
+config from `tailwind.config.js` to a CSS-first `@theme`/`@theme inline` block inside
+`globals.css` — a real mechanical difference from the v3 most engineers expect, worth
+stating since it shaped how the token system below got built. (3) built a warm cream/rust
+palette (light + dark, switched via `prefers-color-scheme`, no manual toggle) as semantic
+CSS variables (`--background`, `--surface`, `--foreground`, `--muted`, `--border`, `--accent`
++`-hover`/`-foreground`, `--success`/`--warning`/`--danger` +`-bg`) mapped into Tailwind's
+theme. (4) deliberately kept the accent color (rust/orange — buttons, links, action) in a
+different hue family from the confidence colors (green/amber/red — success/warning/danger),
+so a decorative action color can never be mistaken for a trust signal. (5) replaced each
+page's own repeated back-link/nav text with one shared `AppHeader` component. (6) recolored
+the provenance click-to-highlight overlay from amber to accent, since D25 built it against
+generic amber, but a *selection* highlight isn't a trust signal — it's an interaction state
+— so it belongs in the accent family, and this also visually ties the highlighted table row
+to its highlighted region on the document image.
+
+**The alternatives:**
+- **CSS Modules / plain CSS / styled-components** (for #1) — Tailwind arrived for free with
+  the scaffold, but staying with it was also a real call: CSS Modules mean a separate `.module.css`
+  file per component, hand-written class names, and constant back-and-forth between markup
+  and stylesheet to change one style; plain CSS is worse at that scale and starts colliding
+  on class names without a convention; styled-components adds a runtime and build-step cost
+  for something Tailwind gets for free. None of them argued strongly enough for switching
+  away from the scaffold default.
+- **`tailwind.config.js`** (for #2) — not actually an alternative, just what I'd have
+  defaulted to from memory if I hadn't checked; Tailwind v4's CSS-first config is the only
+  supported path here, not a competing option I turned down.
+- **Cold corporate gray/blue, or the generic "AI aesthetic" default (purple/indigo,
+  gradients, rounded-2xl everywhere)** (for #3) — rejected per the `agent-skills`
+  frontend-ui-engineering guidance loaded for this pass: those patterns read as generic/
+  AI-generated, and a finance-trust product benefits from feeling deliberately made, not
+  templated.
+- **Reuse the confidence-color palette for accent too** (for #4) — rejected: a single hue
+  family carrying both "this button does something" and "this field failed validation"
+  would blur the exact distinction D2/D13 depends on.
+- **Keep each page's own local nav links** (for #5) — rejected: redundant once a global nav
+  exists, and inconsistent (some pages had "+ Upload", others "← All invoices", not a shared
+  pattern).
+- **Leave the overlay amber** (for #6) — rejected once the accent/confidence hue split (see
+  #4) was decided; amber is now reserved for warning-severity trust signals, so a selection
+  highlight sharing that hue would misuse the same signal.
+
+**The reasoning:** D15/D26 deferred visual design to one dedicated pass after the functional
+core was done; this is that pass, executed as a coherent set of token-level decisions rather
+than ad hoc page-by-page styling, so every screen reads as one system instead of six
+independently-styled ones. The bigger, more honest point is #1/#2: not every technical
+choice in this project was a deliberated tradeoff — some (Tailwind, its v4 config model) were
+inherited defaults from the scaffold, and this log is more useful being explicit about which
+decisions were actually weighed versus which were just accepted as-is.
+
+**Tradeoffs accepted:** Tailwind and its v4 config model were never pressure-tested against
+alternatives in a formal side-by-side — the case for keeping it rests on general
+speed/flexibility reasoning, not a documented comparison specific to this project's needs.
+If that turns out to be the wrong call later, there's no prior analysis to revisit beyond
+what's written here. The accent/confidence hue split adds a rule
+future styling work has to remember and respect (don't reach for amber/green/red for anything
+that isn't a trust signal).
+
+**What's still open, not yet decided:** whether the "sample"/"edited" tags (currently
+accent-tinted) should move to a neutral/gray treatment instead, since they're informational,
+not clickable, and currently share a hue with real action links — flagged during review, no
+call made yet. Also open: the flags-column wall-of-text layout, low-contrast disabled-button
+states, and a missing focus-visible ring on header nav links — all raised as findings, none
+turned into a decision or a fix yet.
+
+**What I deliberately cut:** re-evaluating Tailwind or its config model against alternatives
+at this stage (accepted as inherited); a manual light/dark toggle (system-preference-only,
+per earlier scope call); reusing confidence colors for decorative/action UI.
+
+---
+
+## D28 — UI polish, round two: self-critique against real screenshots before committing round one
+
+**The decision:** before committing any of D27's work, ran a second pass — reviewed the
+actual rendered pages (screenshots of upload, invoices list, invoice detail) as a UI/UX
+designer would, on top of the earlier Playwright check that only confirmed computed colors/
+fonts matched the design tokens. That review surfaced concrete, fixable problems D27's token
+layer didn't touch: a validation-flag message wrapping into a wall of text inside a table
+cell; a disabled "Mark trusted" button too low-contrast to read; the browser's default blue
+focus outline showing on header nav links (no custom focus style had been added there, only
+on primary buttons); the filter form wrapping awkwardly; near-identical table rows with
+nothing to anchor scanning; and the "sample"/"edited" tags sharing the accent color with real
+action links. Fixing these is round two of the same UI pass, done before anything from round
+one gets committed.
+
+**The alternatives:**
+- **Commit round one as a checkpoint, fix issues in a follow-up commit** — rejected: nothing
+  has been committed yet for this pass, so there's no reason to create a commit that's
+  immediately known to have rough edges when the fixes are already identified.
+- **Treat the Playwright token check as sufficient sign-off** — rejected: confirming
+  `background-color` and `font-family` match the design tokens proves the CSS variables wired
+  correctly, but says nothing about whether the resulting page is actually usable — contrast,
+  layout wrapping, and a stray focus outline are all invisible to a computed-style diff and
+  only showed up once the pages were actually looked at.
+
+**The reasoning:** this follows the standing rule for this project — verify before
+documenting, document before committing, nothing pushed without explicit go-ahead. "Verify"
+turned out to need two different checks doing two different jobs: Playwright's computed-style
+check answers "did the token system wire up correctly," a human/design review answers "is
+this actually good UX" — and only the second one catches things like a wall-of-text table
+cell or a default browser focus ring clashing with the palette. Treating the first check as
+if it were the second would have shipped a rough round one that then needed an obvious
+follow-up fix.
+
+**Tradeoffs accepted:** a second review pass before the first commit costs time up front;
+accepted because it's cheaper than committing something with known, already-identified rough
+edges and fixing it after the fact.
+
+**What I deliberately cut:** committing round one as-is and treating round two as a separate,
+later cleanup pass.
+
+---
+
+## D29 — Downloadable sample invoices: a privacy-preserving sandbox, not just a trust demo
+
+**The decision:** added a "Download sample invoices" section to the landing page with 8
+curated documents a visitor can download and push back through the normal upload flow —
+`clean invoice`, `invalid GSTIN`, `arithmetic mismatch` (the existing 3, D24 — DB-backed,
+also link through to their pre-scored detail page), plus 5 new ones covering realistic
+document conditions: `scanned copy`, `phone photo`, `stamped/annotated scan`, `multi-page
+invoice`, `missing/illegible fields` (new, static files in `public/samples/`, download-only,
+no provenance).
+
+**How this got decided — the actual arc, because it moved:** started from a narrower
+question ("should users be able to self-test the upload flow?"), framed around a "reviewer"
+persona — which was the wrong frame: there are no roles in this app (D18), just one
+undifferentiated visitor, so "reviewer" was describing an intent, not a technical distinction.
+The real reframe came next: D21 already tells every visitor not to upload their own invoice
+because this deployment doesn't retain real financial documents. That instruction is empty
+without an answer to "then what *do* I test with?" — so the sample set isn't a bonus demo
+feature, it's the other half of D21's privacy stance: don't upload yours, here's a realistic
+one instead. Before picking documents, I was asked to first enumerate how real invoices
+actually reach a system like this — landed on four independent axes (file format: native PDF
+vs scanned-raster vs phone photo vs screenshot; capture quality: skew, glare, low-res,
+compression; content messiness: handwriting, stamps, non-standard layout; structural: multi-
+page, corrupted/password-protected, wrong doc type) rather than guessing at "messy" in the
+abstract. The final 8 were chosen to cover those axes by *combining* them realistically (a
+phone photo is rotated *and* glared *and* non-standard, not one variable at a time), not by
+producing one narrow fixture per axis.
+
+**The alternatives:**
+- **Treat this as a trust-engine demo feature** (my initial framing) — rejected in favor of
+  the privacy-sandbox framing: the trust-engine showcase is a real side-effect, not the
+  reason this exists.
+- **One sample per axis in isolation** — rejected: unrepresentative of how mess actually
+  shows up (compounded, not isolated), and would need many more than 8 to cover every axis
+  value separately.
+- **Include a corrupted/password-protected file** to test graceful failure — left out of
+  this batch: that tests error handling, a different property than "does the trust engine
+  hold up on real-but-messy input." Kept as a possible separate addition, not mixed in here.
+- **Script/guarantee specific validation outcomes for the 5 new samples** (e.g. force sample
+  #4 to trip a specific flag, matching how the original 3 were hand-authored, D24) —
+  rejected: these exist to represent plausible real documents, not regression fixtures: they
+  run through the same live Gemini extraction any real upload would, so whatever confidence/
+  flags come back are genuinely earned, not pre-decided. Only the original 3 (D24) still use
+  hand-authored ground truth, for a different, already-settled reason.
+- **A literal handwriting simulation** (an external handwriting font, e.g. Google Fonts
+  Caveat) — considered, then explicitly rejected in favor of keeping the repo fully
+  self-contained: no downloaded assets, no new runtime/build dependency beyond what's already
+  needed. Replaced with a programmatic low-quality scan carrying a stamp ("PAID") and a
+  pen-style annotation (an SVG squiggle path + italic caption) — built entirely from the two
+  new devDependencies below, no font files, same "realistic synthetic approximation" standard
+  already accepted for the rest of this project's fixtures.
+
+**The reasoning:** this is D21's logic completed, not a new direction — privacy-first (don't
+upload real invoices) only holds together if there's a safe, realistic alternative to upload
+instead, so the sample set is the sandbox that makes the disclaimer actually actionable. The
+two-tier architecture keeps that cheap: the existing 3 already paid for DB storage + hand-
+annotated bboxes (D21/D24), so they keep their provenance link; the 5 new ones need none of
+that — a plain file in `public/samples/` and the completely ordinary upload path is enough,
+since D21 already guarantees a normal upload is never persisted or specially treated either
+way.
+
+**Implementation, kept undocumented in caveat-by-caveat detail on purpose (this is a demo,
+not a research paper):** added `pdfkit` and `sharp` as devDependencies — build-time-only
+asset generation (`scripts/generate-samples.ts`, run once, output checked into
+`public/samples/`), not part of the running app. Line-item math, tax, and a real GSTIN
+checksum (reusing `gstinCheckDigit` from the validation engine itself) are all internally
+consistent in every sample — nothing is planted to fail. `app/page.tsx` became an async
+server component (queries the 3 seeded sample IDs) rendering a new `DownloadSamples` section
+and an extracted `UploadForm` client component (previously all one client component).
+
+**Tradeoffs accepted:** the 3 raster-distorted samples (scanned, phone-photo, stamped-scan)
+are noticeably larger files (1.6–1.9MB) than a real scan/photo would need to be, since they're
+generated at print resolution without final-pass compression tuning — acceptable for a demo
+download, not something to optimize further right now. Gemini's read on the 5 new samples is
+genuinely unscripted, so a future run could see different flags than whatever a reviewer saw
+today — intentional (see reasoning), but worth remembering if this ever needs a stable demo
+script.
+
+**What I deliberately cut:** a corrupted/password-protected "does it fail gracefully" sample;
+scripting guaranteed outcomes for any of the 5 new samples; any externally-downloaded font or
+image asset.

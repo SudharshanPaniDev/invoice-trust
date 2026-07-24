@@ -69,14 +69,14 @@ export function DocumentViewer({
 
   if (status === "unavailable") {
     return (
-      <div className="flex h-64 items-center justify-center rounded border border-dashed text-sm text-gray-400">
+      <div className="flex h-64 items-center justify-center rounded-lg border border-dashed border-border text-sm text-muted">
         No source document stored for this invoice.
       </div>
     );
   }
   if (status === "error") {
     return (
-      <div className="flex h-64 items-center justify-center rounded border border-dashed text-sm text-red-500">
+      <div className="flex h-64 items-center justify-center rounded-lg border border-dashed border-danger/30 text-sm text-danger">
         Couldn&apos;t render the document.
       </div>
     );
@@ -101,14 +101,19 @@ export function DocumentViewer({
   return (
     <div className="relative inline-block">
       {status === "loading" && (
-        <div className="flex h-64 w-full items-center justify-center text-sm text-gray-400">
-          Loading document…
-        </div>
+        <div
+          className="h-64 w-[459px] max-w-full animate-pulse rounded-lg border border-border bg-surface"
+          aria-busy="true"
+          aria-label="Loading document"
+        />
       )}
-      <canvas ref={canvasRef} className="max-w-full rounded border" />
+      <canvas
+        ref={canvasRef}
+        className={`max-w-full rounded-lg border border-border ${status === "loading" ? "hidden" : ""}`}
+      />
       {overlay && (
         <div
-          className="pointer-events-none absolute rounded border-2 border-amber-500 bg-amber-400/25 transition-all"
+          className="pointer-events-none absolute rounded border-2 border-accent bg-accent/20 transition-all"
           style={{
             top: overlay.top,
             left: overlay.left,

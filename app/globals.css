@@ -1,26 +1,76 @@
 @import "tailwindcss";
 
+/*
+ * Design tokens (D26 — UI polish pass). Warm, friendly direction: cream/off-white
+ * neutrals rather than stark white/gray, one warm rust/terracotta accent for actions.
+ * Confidence colors (success/warning/danger) are a DIFFERENT hue family from the accent
+ * on purpose — they carry semantic meaning (earned confidence, D2/D13) and must never be
+ * visually confused with a decorative brand color.
+ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+  --background: #faf6ef;
+  --surface: #ffffff;
+  --foreground: #2b2420;
+  --muted: #8a7b6c;
+  --border: #e7dfd3;
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --accent: #b5501e;
+  --accent-hover: #963f16;
+  --accent-foreground: #fffaf5;
+
+  --success: #1e7a42;
+  --success-bg: #e8f5ec;
+  --warning: #b7791f;
+  --warning-bg: #fbf1dd;
+  --danger: #c1382a;
+  --danger-bg: #fbeae7;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: #1e1913;
+    --surface: #28221a;
+    --foreground: #f2e9db;
+    --muted: #a6957f;
+    --border: #3d3427;
+
+    --accent: #e38a4c;
+    --accent-hover: #f0a05f;
+    --accent-foreground: #241505;
+
+    --success: #4caf6e;
+    --success-bg: #1c3324;
+    --warning: #e0a83d;
+    --warning-bg: #3a2e14;
+    --danger: #e27060;
+    --danger-bg: #3a1f1b;
   }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-foreground: var(--accent-foreground);
+
+  --color-success: var(--success);
+  --color-success-bg: var(--success-bg);
+  --color-warning: var(--warning);
+  --color-warning-bg: var(--warning-bg);
+  --color-danger: var(--danger);
+  --color-danger-bg: var(--danger-bg);
+
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
 }

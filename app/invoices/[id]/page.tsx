@@ -23,20 +23,19 @@ export default async function InvoiceDetail({
   const view = toView(row as unknown as StoredInvoice);
 
   return (
-    <main className="mx-auto max-w-4xl p-8 font-sans">
-      <div className="flex items-baseline justify-between">
-        <h1 className="text-2xl font-semibold">Invoice</h1>
-        <Link href="/invoices" className="text-sm text-blue-600 hover:underline">
-          ← All invoices
-        </Link>
-      </div>
-      <p className="mt-1 text-xs text-gray-500">
-        <code>{view.id}</code> · status <span className="font-medium">{view.status}</span> ·{" "}
+    <main className="mx-auto max-w-4xl px-8 py-10">
+      <Link href="/invoices" className="text-xs text-accent hover:text-accent-hover hover:underline">
+        ← All invoices
+      </Link>
+      <h1 className="mt-2 text-2xl font-semibold">Invoice</h1>
+      <p className="mt-1 text-xs text-muted">
+        <code className="rounded bg-surface px-1 py-0.5">{view.id}</code> · status{" "}
+        <span className="font-medium text-foreground">{view.status}</span> ·{" "}
         {view.createdAt.toISOString().slice(0, 10)}
       </p>
       {view.hasDocument && (
-        <p className="mt-2 inline-block rounded bg-indigo-50 px-2 py-1 text-xs font-medium text-indigo-700">
-          📄 Sample invoice — curated example, not a real submission (see decisions.md D21/D24)
+        <p className="mt-2 inline-block rounded-full border border-border bg-border/20 px-2 py-1 text-xs font-medium text-muted">
+          Sample invoice — curated example, not a real submission (see decisions.md D21/D24)
         </p>
       )}
 
@@ -44,11 +43,11 @@ export default async function InvoiceDetail({
         <TrustBanner canTrust={view.canTrust} openFlags={view.openFlags} />
         {view.status !== "trusted" && (
           <div className="mt-3">
-            <MarkTrusted id={view.id} canTrust={view.canTrust} />
+            <MarkTrusted id={view.id} canTrust={view.canTrust} openFlags={view.openFlags} />
           </div>
         )}
         {view.status === "trusted" && (
-          <p className="mt-3 text-sm font-medium text-green-700">✓ Marked trusted</p>
+          <p className="mt-3 text-sm font-medium text-success">✓ Marked trusted</p>
         )}
       </div>
 
