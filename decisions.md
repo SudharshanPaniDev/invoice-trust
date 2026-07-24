@@ -1409,3 +1409,59 @@ only added explanatory text and a `title` attribute.
 
 **What I deliberately cut:** touching the confidence-scoring thresholds themselves (D13
 stays exactly as designed) — the fix is communication, not recalibration.
+
+---
+
+## D36 — Added component tests: React Testing Library, on the 4 components worth testing
+
+**The decision:** wrote the first React component tests this project has ever had — 29
+tests across `EditableField`, `MarkTrusted`, `UploadForm`, and `ScoredFields` (its
+`Confidence`/`confidenceTitle` branching logic and `FlagDisclosure`). Used **React Testing
+Library** (`@testing-library/react` + `@testing-library/user-event`), added
+`@testing-library/jest-dom`'s matchers via a new `vitest.setup.ts`, and added
+`@testing-library/user-event` as a new devDependency (the other two were already installed,
+unused, since the project's start).
+
+**Why this needed doing now, and why it hadn't been:** a direct audit found 9 test files
+(465 lines) covering the extraction/validation/query logic thoroughly, and zero tests
+touching any React component — `@testing-library/react` and `jsdom` were correctly wired
+into `vitest.config.ts` from the beginning but never actually used. The tooling readiness
+without the tests is itself worth naming honestly: it was set up, then never followed
+through on.
+
+**Why React Testing Library specifically, not an alternative:**
+- **Enzyme** — effectively unmaintained for current React versions; RTL is the ecosystem
+  default now and is what the project's own `vitest.config.ts` (`jsdom` + `@vitejs/plugin-react`)
+  was already set up to support.
+- **Cypress Component Testing / Playwright component testing** — real alternatives, but
+  they run in an actual browser per test, which is slower and heavier for testing component
+  *logic and behavior* (does clicking "edit" show an input, does a failed save show an error)
+  as opposed to *visual/layout* correctness. Playwright already has an established, different
+  job in this project (D25: verifying real browser-rendered CSS positioning) — component
+  logic tests and visual-rendering tests are different concerns, and RTL fits the former
+  without paying a real-browser cost for every assertion.
+- **Testing components via Vitest's default DOM-less mode (no RTL at all)** — would mean
+  hand-rolling render/query/cleanup logic Vitest doesn't provide out of the box; RTL is
+  exactly the thin layer that turns `jsdom` into something you can query the way a user
+  would (by role, by text), which is also why its queries double as a basic accessibility
+  check (if `getByRole("button", { name: "edit" })` can't find it, a screen reader probably
+  can't either).
+
+**Why these 4 components, not all of them:** `EditableField` (real interaction: edit, save,
+cancel, Enter/Escape, error), `MarkTrusted` (disabled-state logic, singular/plural copy,
+success/failure), `UploadForm` (just refactored in D32 — redirect-on-success is exactly the
+kind of behavior a later change could silently break), and `ScoredFields`'s confidence/flag
+logic (the branchy part: verified vs. corrected vs. flagged vs. damped-model-estimate, each
+producing different tooltip text per D35). `DocumentViewer` was deliberately left out — it
+does real canvas/pdf.js rendering, which `jsdom` cannot execute; that component is already
+covered by the Playwright geometric check from D25, the right tool for testing what it
+actually does. `TrustBanner`, `Tooltip`, `AppHeader`, `DownloadSamples` were left out as
+mostly-static markup with no branching logic worth locking in.
+
+**Tradeoffs accepted:** one new devDependency (`@testing-library/user-event`, ~small). All
+87 tests (58 existing + 29 new) and a full production build were run and passed before this
+entry was written.
+
+**What I deliberately cut:** testing every component uniformly regardless of whether it has
+logic worth protecting; using Playwright/Cypress component testing instead of RTL for
+behavior-level assertions; leaving the RTL/jsdom setup installed-but-unused any longer.

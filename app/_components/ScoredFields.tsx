@@ -1,5 +1,6 @@
 import type { ScoredField } from "@/lib/validation/confidence";
 import { EditableField } from "../invoices/[id]/EditableField";
+import { Tooltip } from "./Tooltip";
 
 const FIELDS: [string, string][] = [
   ["vendorName", "Vendor"],
@@ -38,13 +39,14 @@ function Confidence({ f }: { f: ScoredField | undefined }) {
   if (!f) return <span className="text-muted">—</span>;
   const low = f.confidence < 0.5;
   return (
-    <span
-      title={confidenceTitle(f)}
-      className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-xs font-medium ${confColor(f.confidence)}`}
-    >
-      {low && <span aria-hidden="true">⚠</span>}
-      {Math.round(f.confidence * 100)}%{f.verified ? " ✓" : ""}
-    </span>
+    <Tooltip content={confidenceTitle(f)}>
+      <span
+        className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-xs font-medium ${confColor(f.confidence)}`}
+      >
+        {low && <span aria-hidden="true">⚠</span>}
+        {Math.round(f.confidence * 100)}%{f.verified ? " ✓" : ""}
+      </span>
+    </Tooltip>
   );
 }
 
