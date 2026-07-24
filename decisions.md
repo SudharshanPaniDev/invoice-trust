@@ -1167,3 +1167,34 @@ script.
 **What I deliberately cut:** a corrupted/password-protected "does it fail gracefully" sample;
 scripting guaranteed outcomes for any of the 5 new samples; any externally-downloaded font or
 image asset.
+
+---
+
+## D30 — D29's deploy failed on `next build`'s typecheck; `tsx` had silently let it through
+
+**What went wrong:** pushed D29 without running a production build first — `tsx` (used to
+run `scripts/generate-samples.ts` locally, same as `prisma/seed.ts`) transpiles TypeScript
+but doesn't typecheck it, so two real type errors in that script never surfaced locally. The
+Vercel build ran `next build`, which does full `tsc` typechecking across the project, and
+failed: `sharp.Sharp` used as a type (sharp exports `Sharp` as a named type, not a namespace
+member) and `sharp({ create: {...} })` missing the `background` field the `Create` type
+requires even when generating pure noise.
+
+**The fix:** import `Sharp` as a named type instead of dotting off the default import;
+add an explicit (unused, since noise overwrites every pixel) `background` value to satisfy
+the type. Both are genuine type corrections, not suppressions — verified by running `next
+build` locally end-to-end afterward (compiles, typechecks, generates all routes) before
+pushing again.
+
+**Why this is the same lesson as D12, not a new one:** D12 already established "a tool
+accepting something at runtime doesn't mean it's type-valid" for `prisma db push` vs `next
+build`. This is the identical gap in a different pair of tools (`tsx` vs `next build`) — I
+should have run a full production build before pushing D29 and didn't, because the standing
+workflow at the time had paused an earlier `next build` for an unrelated reason (checking a
+different change was correct first) and I didn't circle back to it before shipping this
+batch. Logging as its own entry per this project's practice of recording the real path,
+not a tidied-up one.
+
+**What I deliberately cut:** excluding `scripts/` from the typecheck scope as a workaround —
+rejected; the actual code had actual type errors, the fix is fixing them, not hiding the
+script from the checker.

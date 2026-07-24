@@ -10,7 +10,7 @@
 import { writeFileSync, mkdirSync, createWriteStream } from "node:fs";
 import { join } from "node:path";
 import PDFDocument from "pdfkit";
-import sharp from "sharp";
+import sharp, { type Sharp } from "sharp";
 import { gstinCheckDigit } from "../lib/validation/gstin";
 
 const OUT_DIR = join(__dirname, "..", "public", "samples");
@@ -130,9 +130,15 @@ function invoiceSVG(
   </svg>`;
 }
 
-async function addGrain(base: sharp.Sharp, w: number, h: number, sigma = 22, alpha = 0.1) {
+async function addGrain(base: Sharp, w: number, h: number, sigma = 22, alpha = 0.1) {
   const noise = await sharp({
-    create: { width: w, height: h, channels: 3, noise: { type: "gaussian", mean: 128, sigma } },
+    create: {
+      width: w,
+      height: h,
+      channels: 3,
+      background: { r: 128, g: 128, b: 128 },
+      noise: { type: "gaussian", mean: 128, sigma },
+    },
   })
     .ensureAlpha(alpha)
     .png()
@@ -140,7 +146,7 @@ async function addGrain(base: sharp.Sharp, w: number, h: number, sigma = 22, alp
   return base.composite([{ input: noise, blend: "over" }]);
 }
 
-async function addVignette(base: sharp.Sharp, w: number, h: number) {
+async function addVignette(base: Sharp, w: number, h: number) {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}">
     <defs>
       <radialGradient id="v" cx="50%" cy="50%" r="75%">
