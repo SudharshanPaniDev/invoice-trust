@@ -1243,9 +1243,23 @@ Accepted as the best available zero-cost option; a paid Neon tier remains the on
 close that gap completely, and that trade is explicitly off the table per the no-spend
 constraint.
 
+**Correction, checked against the real run history:** the assumption above — "cuts the
+frequency sharply" — turned out to be optimistic, not measured. Pulling the actual workflow
+run timestamps (`gh run list --workflow=keep-warm.yml`) showed real gaps of **1–3 hours**
+between successful runs, not the configured 4 minutes. GitHub's free-tier scheduler
+deprioritizes low-traffic repos' scheduled workflows far more aggressively than the original
+"can lag under load" framing implied — this isn't an occasional miss, it's the normal case.
+The mechanism still runs and still succeeds every time it fires; it just fires far less often
+than intended, so it mitigates less of the cold-start problem than this entry originally
+claimed. Correcting the record rather than leaving the overstated claim standing — no code
+changed as a result of this correction; a genuinely reliable free fix (e.g. an external
+uptime-monitor ping) remains a real option if this needs revisiting later, not implemented
+here.
+
 **What I deliberately cut:** any paid Neon plan change; Vercel Cron as the ping mechanism
 (too infrequent on Hobby to help); leaving the cold-start problem unaddressed and only
-patching the loading-state half.
+patching the loading-state half; leaving the "cuts the frequency sharply" claim uncorrected
+once the actual run history showed otherwise.
 
 ---
 
