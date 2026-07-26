@@ -1554,3 +1554,46 @@ by design it's excluded from `pnpm test`/CI for exactly that reason.
 were — the entry originally shipped with 3 of 8 honestly marked unverified, and was only
 updated to "all 8 confirmed" after an actual second re-run proved it, not on the assumption
 that the fix would obviously work.
+
+---
+
+## D38 — Route-handler tests for the two claims the product actually rests on
+
+**The decision:** added `tests/trust-route.test.ts` and `tests/correction-route.test.ts` —
+the first tests in this project that exercise `POST /api/invoices/:id/trust` and
+`PATCH /api/invoices/:id` as HTTP route handlers, not as pure functions. Every existing test
+(including the new ones in D36) tests logic one layer below the route — `scoreInvoice`,
+`runRules`, component behavior — never the actual request/response contract at the boundary
+a real client hits.
+
+**Why this specific gap mattered more than other untested code:** D14's entire claim is that
+the trust gate is "server-enforced... not just hidden in the UI" — a claim that's only
+actually proven by testing the route itself returns 409 when flags are open, independent of
+whatever the client sends or omits. Same for D17: "a correction re-validates the whole
+invoice" is a route-level behavior (parse the request, call the correction, shape the
+response), and nothing had ever verified that contract — only the pure re-validation logic
+underneath it (already covered elsewhere).
+
+**How they're isolated, and why that's the right boundary:** neither route has a built-in
+dependency-injection seam the way `lib/extract.ts` does for the Gemini client (`GenAILike`).
+Rather than add one purely to enable testing, each test mocks at the natural existing module
+boundary — `@/lib/db`'s `prisma` for the trust route (letting `toView`'s real gate logic run
+against a constructed row), and `@/lib/correct`'s `applyCorrection` for the PATCH route
+(isolating the route's own contract — JSON parsing, validation, status-code mapping — from
+the re-validation logic it calls, which already has its own coverage path through
+`scoreInvoice`/`runRules`). This mirrors the project's existing convention (D36: mock at the
+real boundary, don't build a new one just to make something testable).
+
+**What's covered:** invoice-not-found → 404 (both routes); zero open flags → marks trusted
+and persists (trust route); any open flag, including on a `failed`-status row → 409, `update`
+never called (trust route); invalid JSON, missing/wrong-typed fields → 400 without ever
+calling the correction logic; a thrown correction error → 400 with the real message; success
+→ 200 with the fresh scored result (correction route). 9 new tests, all passing; 96 total
+across the suite.
+
+**Tradeoffs accepted:** none — pure test addition, no production code changed. Confirmed with
+the full suite (96/96) and a production build before this entry was written.
+
+**What I deliberately cut:** adding a client-injection parameter to `lib/correct.ts`/the trust
+route purely to make them "properly" testable — the existing module-mock boundary already
+tests the real contract without changing production code shape for testing's sake.
