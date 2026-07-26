@@ -36,6 +36,10 @@ flagged field, see the whole invoice re-validate, and only then mark it trusted.
   on the source document.
 - Give anyone trying the demo a safe way to do so without uploading their own real
   financial documents (D21/D29).
+- Let trust survive the boundary where data leaves the application — structured export
+  carries confidence and flags with it, not just raw values (D42/D43).
+- Extend "confidence earned by validation" across invoices, not just within one — catch a
+  duplicate or resubmitted invoice the same way an arithmetic error is caught (D44).
 
 ## 3. Scope
 
@@ -49,6 +53,10 @@ flagged field, see the whole invoice re-validate, and only then mark it trusted.
 - Provenance (source highlighting) for a curated set of sample documents
 - A downloadable sample-invoice set covering realistic document conditions, so nobody
   needs to upload a real invoice to try the product
+- Structured export (CSV and JSON) of extracted data, trusted-only by default with an
+  explicit override, never omitting trust-state columns (D42/D43)
+- Cross-invoice duplicate detection — an exact-match blocking check and a softer,
+  non-blocking resubmission warning (D44)
 - Public, unauthenticated demo deployment
 
 **Out of scope**
@@ -65,6 +73,10 @@ flagged field, see the whole invoice re-validate, and only then mark it trusted.
 - Batch or multi-document upload
 - Any invoice lifecycle operation beyond single-field correction (no delete, no
   re-extraction, no bulk actions)
+- Blocking an upload for being a duplicate — stored and flagged, same as any other
+  validation issue, never rejected (D44)
+- Fuzzy vendor-name matching or any fallback when GSTIN is unusable for duplicate
+  detection; scheduled/automatic export; provenance/bbox fields in exported data (D42/D44)
 
 ## 4. Product Capabilities
 
@@ -92,6 +104,15 @@ click a field and see the region of the source document it was read from.
 **4.7 Sample Sandbox** — The system shall provide a set of downloadable sample invoices
 covering realistic document conditions, so a user has something safe to test the upload
 flow with instead of a real document.
+
+**4.8 Export** — The system shall let a user export the currently filtered set of invoices
+as CSV or JSON, defaulting to trusted invoices only with an explicit override, always
+including each field's confidence and any flags/warnings.
+
+**4.9 Duplicate Detection** — The system shall check every uploaded or corrected invoice
+against existing invoices for an exact match (same vendor, invoice number, and total) and
+flag it as blocking; and for a same-vendor/total/near-date match with a different invoice
+number, surfaced as a non-blocking warning.
 
 ## 5. User Roles
 
@@ -121,6 +142,11 @@ public demo needs zero setup friction for a reviewer to try it.
 1. Open a seeded sample invoice's detail page.
 2. Click a field with a source location.
 3. See the corresponding region highlighted on the original document image.
+
+**Export journey**
+1. Navigate to Invoices, apply any filters.
+2. See how many of the filtered invoices are trusted, with an option to include the rest.
+3. Download as CSV or JSON.
 
 ## 7. Functional Requirements
 
@@ -164,6 +190,22 @@ public demo needs zero setup friction for a reviewer to try it.
 - Uploading a sample shall go through the exact same path as any other upload — no
   special-casing.
 
+**7.8 Export**
+- The system shall export the currently filtered invoices as CSV or JSON.
+- The default scope shall be trusted invoices only, with an explicit, visible override to
+  include the rest.
+- Every export shall include each field's confidence and any flags/warnings, regardless of
+  scope — nothing exported shall ever be ambiguous about its trust state.
+
+**7.9 Duplicate Detection**
+- The system shall check a new or corrected invoice against existing invoices for an exact
+  match on vendor GSTIN, invoice number, and total (within a small tolerance).
+- An exact match shall floor the invoice number's confidence and block the trust gate, the
+  same mechanism as any other failed verification rule.
+- A same-vendor/total match within 7 days but a different invoice number shall be
+  surfaced as a non-blocking warning — visible, but never floors confidence or blocks trust.
+- Neither tier shall block the upload itself.
+
 ## 8. Business Rules
 
 - A field's confidence is earned by validation; the model's self-reported confidence is
@@ -177,6 +219,11 @@ public demo needs zero setup friction for a reviewer to try it.
   numbers it returns (D4).
 - Every sample invoice — seeded or downloadable — is visibly marked as a sample, never
   presented as if it were a real submission (D24/D29).
+- Export defaults to trusted invoices only and always includes trust-state columns,
+  regardless of scope — nothing exported is ever ambiguous about whether it was verified
+  (D42/D43).
+- A duplicate match either blocks trust (exact match) or surfaces as a non-blocking
+  warning (softer, date-proximity match) — it never blocks the upload itself (D44).
 
 ## 9. Non-Functional Requirements
 
@@ -226,6 +273,8 @@ with its scope (Section 5) — this is a stated position, not a gap being overlo
 | Structured search/query | ✅ |
 | Provenance (curated samples) | ✅ |
 | Sample invoice sandbox | ✅ |
+| Structured export (CSV/JSON, trusted-default) | ✅ |
+| Cross-invoice duplicate detection (two tiers) | ✅ |
 | Authentication / roles | ❌ (out of scope, D1/D18) |
 | Multiple document types | ❌ (out of scope, D3) |
 | Full-text/semantic search | ❌ (out of scope, D3/D6) |

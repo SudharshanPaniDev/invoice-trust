@@ -1942,3 +1942,42 @@ screenshot: the duplicate upload from this entry's own test correctly shows a "d
 badge the original (non-duplicate) upload doesn't. Build and full suite (107/107) stayed
 clean.
 
+---
+
+## D45 — Synced SCOPE.md and README.md to reflect Export and Duplicate Detection
+
+**The decision:** updated `SCOPE.md` and `README.md` to actually mention Export (D42/D43)
+and Duplicate Detection (D44) — checked first, rather than assumed: both docs had zero
+mentions of either feature. They were last substantially written before D42 and were
+genuinely stale relative to what had shipped, not just lightly out of date.
+
+**What changed:**
+- `SCOPE.md` — added both to Purpose, In/Out of Scope (including their own specific cuts:
+  no fuzzy vendor-name matching, no upload-blocking, no scheduled export), Product
+  Capabilities (4.8/4.9), an Export user journey, Functional Requirements (7.8/7.9),
+  Business Rules, and the Delivered Capabilities table.
+- `README.md` — added both to "What it does," added three real npm scripts that existed
+  but were never documented (`pnpm eval`, `pnpm a11y`, `pnpm check:provenance`, all added
+  across D37/D39/D41 and never backfilled into the README at the time), and added
+  duplicate detection's exact-match-only limitation to Known Limitations.
+- Ran a mechanical accuracy check across `decisions.md`, `SCOPE.md`, and `README.md`:
+  extracted every `D<number>` reference in all three files and confirmed each one resolves
+  to an entry that actually exists — catching, for instance, whether the removed D40 (the
+  LCP investigation, pulled per an explicit "we'll come back to this" request) left any
+  dangling references behind. It didn't.
+
+**Why this is its own entry and not folded into D42/D44:** those entries are about the
+features themselves; this one is about keeping the *product-level* documentation honest
+once shipped work outpaces it — a distinct, recurring failure mode in this project
+(`SCOPE.md`'s own founding reason, D33, was this exact problem one level up: scope decided
+early, never written down until asked). Here it's the same pattern at a smaller scale:
+built, shipped, verified — and left the summary docs unaware of it until checked.
+
+**Tradeoffs accepted:** none — pure documentation, no code touched. Full test suite
+(107/107) reconfirmed after the edits as a sanity check, even though `.md` changes can't
+affect it.
+
+**What I deliberately cut:** refreshing the README's landing-page screenshot to show the new
+export/duplicate UI — the written description is accurate and current; the image is a nice-
+to-have, not a correctness issue, and not worth the scope this late.
+
