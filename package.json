@@ -13,7 +13,8 @@
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
-    "db:seed": "tsx --env-file=.env prisma/seed.ts"
+    "db:seed": "tsx --env-file=.env prisma/seed.ts",
+    "eval": "tsx --env-file=.env scripts/run-evals.ts"
   },
   "dependencies": {
     "@google/genai": "^2.13.0",

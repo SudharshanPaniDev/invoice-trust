@@ -1465,3 +1465,92 @@ entry was written.
 **What I deliberately cut:** testing every component uniformly regardless of whether it has
 logic worth protecting; using Playwright/Cypress component testing instead of RTL for
 behavior-level assertions; leaving the RTL/jsdom setup installed-but-unused any longer.
+
+---
+
+## D37 — Built and ran a real eval harness; it immediately found a real bug (closes D26)
+
+**The decision:** introduce a repeatable evaluation pipeline for the model-powered extraction
+workflow — a way to exercise the real Gemini call (not a mock) against a fixed set of
+documents and get back a trustworthy signal on whether the pipeline still behaves correctly,
+runnable on demand rather than reconstructed by hand each time the question comes up. This is
+the eval-strengthening thread D26 said would continue and then didn't; this closes it with a
+real, repeatable mechanism, not another promise.
+
+**The implementation:** `scripts/run-evals.ts` (`pnpm eval`) — a standalone harness, separate
+from the deterministic `pnpm test` suite, that runs **live Gemini extraction** against all 8
+sample invoices, scores each through the real validation pipeline, and either asserts a known
+outcome (the 3 D24 samples, which have a scripted ground truth) or just records what happened
+(the 5 D29 samples, which were deliberately built without one — "let the trust engine
+evaluate naturally").
+
+**Why a separate eval pipeline?**
+
+`pnpm test` and `pnpm eval` validate different layers of the same system, and conflating them
+would weaken both. `pnpm test` (the existing 9 files, 465 lines) validates deterministic
+application logic — parsing, rule evaluation, scoring, query building — against mocked model
+responses (`GenAILike` in `lib/extract.ts` is built specifically to accept a fake client for
+this reason). Given the same input, it produces the same output every time, which is exactly
+what a fast, free, CI-safe suite requires.
+
+`pnpm eval` validates something `pnpm test` structurally cannot: whether the complete
+AI-assisted workflow — real extraction through real scoring — still behaves correctly against
+real documents. That distinction isn't incidental; a mocked client proves the code around the
+model call is correct, but says nothing about whether the model itself, on an actual document,
+still produces output this system can trust.
+
+Live model calls are nondeterministic (the same document can extract slightly differently
+between runs), consume metered API quota (a real constraint, as this entry's D8 correction
+shows), and take real wall-clock time (network round-trips, not in-process function calls).
+None of those properties belong in a suite that's supposed to run on every commit, fast and
+free. Keeping them separate means `pnpm test` stays exactly what CI needs, and `pnpm eval`
+stays available as a deliberate, on-demand check of the thing `pnpm test` can't see.
+
+**What it found, on the first real run:** all 4 samples sharing the shared `invoiceSVG()`
+generator (scanned, phone photo, stamped scan, multi-page) came back flagged
+`vendorGSTIN: GSTIN must be 15 characters (got 14)`. Investigated rather than assumed — this
+was a real bug in `scripts/generate-samples.ts` (D29), not an extraction or validation
+failure: the fake GSTIN strings were missing the mandatory literal `Z` character the format
+requires before the checksum digit (e.g. `"32AABCT1234M1"` is 13 characters where the format
+needs 14 before appending the checksum — the `Z` was simply never added). Confirmed by
+counting the string, not by guessing. Fixed by appending `Z` to all four base GSTIN strings,
+regenerated the affected samples, reran.
+
+**Confirmed, fully — re-run the next day once the daily quota reset:**
+- **All 8 samples** now come back clean: `canTrust: true`, zero flags, across clean-invoice,
+  invalid-GSTIN, arithmetic-mismatch, scanned copy, phone photo, stamped/annotated scan,
+  multi-page, and missing-fields.
+- **Multi-page specifically** is worth calling out: 50 fields scored correctly across both
+  pages (10 invoice-level fields + line items spanning the page break), confirming multi-page
+  extraction actually works end-to-end, not just in theory.
+- All **3 scripted regression checks** (clean-pass, invalid-GSTIN, arithmetic-mismatch) passed
+  both before and after the fix, on both runs — the product's core trust guarantees hold.
+- The initial write-up of this entry honestly flagged 3 of 8 as "not yet reconfirmed" because
+  quota ran out mid-run; re-running the next day (quota resets daily) closed that gap for
+  real rather than leaving it asserted-but-unverified.
+
+**Correction to D8: the free-tier quota is much stricter than previously stated.** D8 said
+"~1,500 requests/day, ~15/min, no expiry." Running the eval twice today (16 real calls) hit a
+`429 RESOURCE_EXHAUSTED` — the actual error reports **`limit: 20` requests/day** for the
+resolved model (`gemini-3.6-flash`, what `gemini-flash-latest` currently points to), not
+~1,500. Whether the model/quota landscape changed since D8 was written, or D8's number was
+never accurate for this specific model, the current real number is 20/day — a meaningful
+operational constraint for anyone (including a future me) planning to run this eval harness,
+or for the live public demo's realistic daily capacity. Recording the actual observed number
+here rather than leaving the stale one uncorrected.
+
+**The alternatives:**
+- **Only ever test via mocked clients (status quo)** — would never have caught this; the bug
+  was in the fixture-generation script, invisible to any test that never calls the real model
+  on the real files.
+- **Assert a hard pass/fail on the 5 unscripted samples too** — rejected, again: doing so
+  would misrepresent documents explicitly designed to have no predetermined answer.
+
+**Tradeoffs accepted:** the eval harness costs real Gemini quota every run (now known to be a
+scarcer resource than assumed) and takes real wall-clock time (network calls, not instant);
+by design it's excluded from `pnpm test`/CI for exactly that reason.
+
+**What I deliberately cut:** claiming all 8 samples were confirmed fixed before they actually
+were — the entry originally shipped with 3 of 8 honestly marked unverified, and was only
+updated to "all 8 confirmed" after an actual second re-run proved it, not on the assumption
+that the fix would obviously work.

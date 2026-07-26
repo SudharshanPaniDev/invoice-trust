@@ -180,7 +180,7 @@ async function buildScannedSample() {
   const inv: InvoiceData = {
     vendorName: "Coastal Traders",
     vendorAddress: "12 Marine Drive, Kochi, Kerala 682001",
-    gstin: validGstin("32AABCT1234M1"),
+    gstin: validGstin("32AABCT1234M1Z"),
     invoiceNo: "CT-2026-0447",
     invoiceDate: "2026-06-18",
     dueDate: "2026-07-18",
@@ -212,7 +212,7 @@ async function buildPhonePhotoSample() {
   const inv: InvoiceData = {
     vendorName: "Greenleaf Nursery & Garden Co.",
     vendorAddress: "48 Palace Road, Bengaluru, Karnataka 560020",
-    gstin: validGstin("29AABCG5678N1"),
+    gstin: validGstin("29AABCG5678N1Z"),
     invoiceNo: "GLN-8821",
     invoiceDate: "2026-06-30",
     dueDate: "2026-07-14",
@@ -246,7 +246,7 @@ async function buildStampedScanSample() {
   const inv: InvoiceData = {
     vendorName: "Sunrise Hardware Stores",
     vendorAddress: "7 Station Road, Pune, Maharashtra 411001",
-    gstin: validGstin("27AABCS4321P1"),
+    gstin: validGstin("27AABCS4321P1Z"),
     invoiceNo: "SHS-3390",
     invoiceDate: "2026-05-22",
     dueDate: "2026-06-05",
@@ -323,7 +323,7 @@ function buildMultipageSample() {
   const inv: InvoiceData = {
     vendorName: "Metro Office Supplies Pvt Ltd",
     vendorAddress: "221 Anna Salai, Chennai, Tamil Nadu 600002",
-    gstin: validGstin("33AABCM8899Q1"),
+    gstin: validGstin("33AABCM8899Q1Z"),
     invoiceNo: "MOS-2026-1187",
     invoiceDate: "2026-06-10",
     dueDate: "2026-07-10",
