@@ -53,14 +53,17 @@ function Confidence({ f }: { f: ScoredField | undefined }) {
 /** A flag's full arithmetic/reason text can run long (e.g. "Subtotal 15000.00 + tax
  *  2700.00 = 17700.00, but total says 17000.00") — showing that inline breaks the table's
  *  row rhythm. `<details>` keeps the row compact (one truncated line) and reveals the full
- *  text on click, natively keyboard- and touch-accessible (no JS, no tooltip-only text). */
-function FlagDisclosure({ flag }: { flag: string }) {
+ *  text on click, natively keyboard- and touch-accessible (no JS, no tooltip-only text).
+ *  `tone` distinguishes a blocking flag (red) from a non-blocking warning (amber, D44) —
+ *  same visual language this app already uses for danger vs. warning everywhere else. */
+function FlagDisclosure({ flag, tone = "danger" }: { flag: string; tone?: "danger" | "warning" }) {
+  const color = tone === "warning" ? "text-warning" : "text-danger";
   return (
     <details className="cursor-pointer">
-      <summary className="max-w-[220px] truncate marker:content-none [&::-webkit-details-marker]:hidden">
+      <summary className={`max-w-[220px] truncate marker:content-none [&::-webkit-details-marker]:hidden ${color}`}>
         ⚠ {flag}
       </summary>
-      <p className="mt-1 max-w-[260px] whitespace-normal text-danger">{flag}</p>
+      <p className={`mt-1 max-w-[260px] whitespace-normal ${color}`}>{flag}</p>
     </details>
   );
 }
@@ -144,8 +147,9 @@ export function ScoredFields({
                   <Value editInvoiceId={editInvoiceId} fieldKey={key} f={f} />
                 </td>
                 <td className="py-1.5 pr-4"><Confidence f={f} /></td>
-                <td className="py-1.5 text-xs text-danger">
-                  {f?.flags.map((flag, i) => <FlagDisclosure key={i} flag={flag} />)}
+                <td className="py-1.5 text-xs">
+                  {f?.flags.map((flag, i) => <FlagDisclosure key={`f${i}`} flag={flag} />)}
+                  {f?.warnings?.map((w, i) => <FlagDisclosure key={`w${i}`} flag={w} tone="warning" />)}
                 </td>
               </tr>
             );

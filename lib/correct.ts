@@ -2,6 +2,8 @@ import { prisma } from "./db";
 import { toView, type StoredInvoice } from "./invoice-view";
 import { scoreInvoice, type ScoredInvoice, type ScoredField } from "./validation/confidence";
 import { updateInvoiceScored } from "./store";
+import { findDuplicates, applyDuplicateResult } from "./duplicate";
+import { parseAmount, parseDate } from "./validation/parse";
 import type { RawInvoice, RawField, RawLineItem } from "./schema";
 
 const INVOICE_KEYS = [
@@ -91,6 +93,19 @@ export async function applyCorrection(
   correctedKeys.add(fieldKey);
 
   const scored = scoreInvoice(raw, correctedKeys);
+
+  // Re-check for cross-invoice duplicates too — editing invoiceNo/GSTIN/total can change
+  // whether this invoice now collides with another (D44), same "re-validate the whole
+  // invoice on any correction" principle as everything else here (D17).
+  const dup = await findDuplicates(
+    scored.fields.vendorGSTIN?.value ?? null,
+    scored.fields.invoiceNo?.value ?? null,
+    parseAmount(scored.fields.total?.value) ?? null,
+    parseDate(scored.fields.invoiceDate?.value)?.date ?? null,
+    id,
+  );
+  applyDuplicateResult(scored, dup);
+
   await updateInvoiceScored(id, raw, scored);
   return scored;
 }

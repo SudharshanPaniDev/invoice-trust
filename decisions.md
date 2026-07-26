@@ -1834,3 +1834,111 @@ export confirming the new column is populated in the first case and empty in the
 **What I deliberately cut:** per-field flag columns as originally shipped; a conditional CSV
 schema as the fix instead of a genuine consolidation.
 
+---
+
+## D44 — Duplicate detection: two tiers, deliberately unequal severity
+
+**The decision:** build cross-invoice duplicate detection — the feature named but deferred in
+D42 — as two tiers with genuinely different weight, not one uniform check:
+
+- **Tier 1 (hard flag):** same `vendorGSTIN` + same `invoiceNo` + same `total` (within the
+  existing `MONEY_TOL` tolerance from `rules.ts`). Pushed into `invoiceNo`'s existing `flags`
+  array — same mechanism as a GSTIN checksum failure — floors confidence, blocks `canTrust`
+  (D14).
+- **Tier 2 (soft warning):** same `vendorGSTIN` + same `total` + `invoiceDate` within 7 days,
+  but a *different* `invoiceNo`. Pushed into a new `warnings` array on the field — visible
+  (amber, not red, reusing the `warning`/`danger` color split already in the design system
+  since D26/D27), but does **not** floor confidence or count toward `openFlags`/`canTrust`.
+
+A row can only be one or the other — Tier 2 candidates are Tier-1 matches excluded, never
+both — and the check skips entirely when `vendorGSTIN` is missing or already invalid, rather
+than falling back to fuzzy vendor-name matching.
+
+**Why two tiers, not one — the real-world grounding, not just an engineering preference:**
+Tier 1 has an actual regulatory basis, not a heuristic one — under India's GST rules, a
+GSTIN-registered vendor is required to issue unique, sequential invoice numbers within a
+financial year, so `(GSTIN, invoiceNo)` colliding is either the same document processed
+twice, a data-entry/OCR error, or a genuine compliance violation. Tier 2 exists because
+Tier 1 alone misses the more dangerous real pattern: a known AP-fraud evasion technique is
+resubmitting the same invoice with a deliberately altered reference number specifically to
+dodge invoice-number-based duplicate checks — same vendor, same amount, close date, different
+number. Catching only Tier 1 would leave the harder, more consequential case uncaught.
+
+**Why Tier 2 must not carry Tier 1's severity — the thing that almost made this a bad
+feature:** every existing flag in this app (GSTIN checksum, arithmetic mismatch) is resolved
+by *correcting a value* (D17) — the flag clears because the data becomes verifiably right. A
+Tier 2 match isn't like that: the vendor, amount, and date can all be completely accurate,
+because a recurring vendor relationship (a monthly retainer, a fixed subscription) legitimately
+produces the same vendor+amount every period with a different, correct invoice number. Treating
+that the same as a regulatory violation would hard-block every legitimate recurring invoice
+with no way to clear it short of building a new dismiss/acknowledge workflow — real new scope,
+and a real false-positive machine, which is exactly the failure mode D20 already found once
+(a flag that cries wolf on valid data erodes the credibility of every other flag it raises).
+Splitting severity by reusing the warning/danger distinction already built into this app's
+design system avoids inventing new UI *and* avoids the false-positive trap.
+
+**Architecture — kept separate from the pure scoring core on purpose:** `scoreInvoice`/
+`runRules` are pure functions today, no DB access — exactly why they're the fastest, fully
+deterministic tests in the suite (D36-adjacent). Duplicate detection needs a DB round-trip
+(does a matching invoice already exist), so it lives in a new, separate `lib/duplicate.ts`
+function called as a post-processing step — after `scoreInvoice()` returns, before
+persisting — from two call sites: the upload route (`app/api/invoices/route.ts`) and the
+correction path (`lib/correct.ts`'s `applyCorrection`, with `excludeId` so a saved invoice
+never matches itself). `scoreInvoice`/`runRules` themselves are not touched.
+
+**Do uploads get blocked?** No. Nothing in this app currently rejects an upload for being
+*wrong* — a failed GSTIN checksum doesn't block storage, an arithmetic mismatch doesn't block
+storage, even `isInvoice: false` still gets stored (marked `failed`). The established pattern
+is store everything, flag problems, let a human decide (D14 gates *certification*, never
+*storage*) — duplicate detection follows the same rule for consistency. There's also a
+concrete reason blocking would actively break something already built: the downloadable
+sample sandbox (D29) exists specifically so the same sample invoices can be uploaded
+repeatedly to test the flow — hard-rejecting a second upload of `sample-clean.pdf` would
+undermine a feature built on purpose.
+
+**Does this change Export?** Tier 1 resolves for free — an invoice with an open Tier 1 flag
+cannot reach `trusted` status while it's open (D14), so it already can't appear in the
+default trusted-only export; it only shows under `includeAll=true`, where D43's `Flags`
+column already makes it unambiguous. Tier 2 is the one real gap: since it's deliberately
+non-blocking, a human can judge a Tier 2 signal legitimate and mark the invoice trusted — so
+it *can* land in the default export, and right now nothing would show that a warning was
+ever raised and accepted. Adding a `Warnings` column to the export (same consolidated,
+per-field-prefixed pattern D43 established for `Flags`) closes that gap — a trusted, exported
+invoice still shows "Tier 2 pattern detected and accepted" if that happened, keeping D42/43's
+promise that exported data is never ambiguous about trust state, including soft signals.
+
+**What I deliberately cut:** fuzzy vendor-name matching or any fallback when GSTIN is
+unusable; currency normalization for the total comparison; a list-page duplicate badge
+(surfaces only through the existing flag/warning mechanism on the detail page, avoiding a new
+cost on the list query); a dismiss/acknowledge workflow for Tier 2 (a human judging it fine
+and moving on doesn't need a new feature, just non-blocking visibility); a backfill scan of
+already-existing data (runs going forward only); locking for near-simultaneous duplicate
+uploads (accepted at this scale, named rather than silently ignored); blocking the upload
+outright for either tier.
+
+**Built and verified, matching this design with no deviation:** `lib/duplicate.ts`
+(`findDuplicates`/`applyDuplicateResult`), wired into both the upload route and
+`applyCorrection`; `warnings?: string[]` added to `ScoredField`; `FlagDisclosure` extended
+with a `tone` prop reusing the existing warning/danger tokens; `Warnings` added to the CSV
+export next to `Flags`. `scoreInvoice`/`runRules` untouched — confirmed by the fact that all
+96 pre-existing tests passed unchanged. Live-tested by uploading the same real sample invoice
+twice: the second upload correctly floored `invoiceNo` to 0.3 confidence and attached
+`"Possible duplicate of invoice <id>..."`, referencing the first upload's real ID — and both
+uploads succeeded (never blocked). Confirmed the flag surfaces through the export's new
+`Warnings`/`Flags` columns too. 11 new tests for the matching/patch logic (mocked `@/lib/db`,
+same pattern as the route-handler tests), 107/107 total, a clean production build, and zero
+new `pnpm a11y` violations from the added amber warning styling.
+
+**Revised after real evidence — added the list-page badge D44 originally deferred.** The
+original reasoning for cutting it ("a new cost on the list query") turned out to be
+overstated on inspection: showing a badge only needs one more already-stored JSON column
+(`invoiceNoField`) in the same query the list page already runs, not a new round trip.
+Seeing a real screenshot with several duplicate pairs sitting adjacent in the list — with no
+way to notice from that view without opening each one — made the value concrete enough to
+revisit. Added `classifyDuplicateField()` (reads the exact same flags/warnings
+`applyDuplicateResult` writes, sharing the message-prefix constants so detection can't drift
+from the actual text) and a small red/amber badge next to the status pill. Verified live via
+screenshot: the duplicate upload from this entry's own test correctly shows a "duplicate"
+badge the original (non-duplicate) upload doesn't. Build and full suite (107/107) stayed
+clean.
+

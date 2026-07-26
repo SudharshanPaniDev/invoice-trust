@@ -17,7 +17,7 @@ export interface RuleResult {
   fields: string[];
 }
 
-const MONEY_TOL = 0.02;
+export const MONEY_TOL = 0.02;
 const KNOWN_CURRENCIES = new Set([
   "INR", "USD", "EUR", "GBP", "AUD", "CAD", "SGD", "JPY", "AED", "CHF",
 ]);

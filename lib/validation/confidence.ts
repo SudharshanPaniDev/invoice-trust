@@ -18,6 +18,10 @@ export interface ScoredField {
   verified: boolean; // corroborated by a passing rule or a human correction
   corrected?: boolean; // value was set by a human (D17)
   flags: string[];
+  /** Non-blocking signals — visible, but never floor confidence or count toward openFlags
+   *  (D44). Unlike flags, a warning isn't cleared by correcting a value; it's a pattern a
+   *  human judges, not a verified defect. */
+  warnings?: string[];
 }
 
 export interface ScoredInvoice {

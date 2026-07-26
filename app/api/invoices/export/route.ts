@@ -38,6 +38,7 @@ function toCsv(views: InvoiceView[]): string {
     "canTrust",
     "openFlags",
     "Flags",
+    "Warnings",
     "createdAt",
     ...FIELD_COLUMNS.flatMap(([, label]) => [label, `${label} Confidence`]),
   ];
@@ -51,8 +52,22 @@ function toCsv(views: InvoiceView[]): string {
       const f = v.fields[key];
       return f?.flags.map((flag) => `${label}: ${flag}`) ?? [];
     }).join("; ");
+    // Warnings (D44) are non-blocking, so — unlike Flags — this can be non-empty even on a
+    // trusted, exported invoice; that's the whole point of adding it (D44's Export gap).
+    const warningSummary = FIELD_COLUMNS.flatMap(([key, label]) => {
+      const f = v.fields[key];
+      return f?.warnings?.map((w) => `${label}: ${w}`) ?? [];
+    }).join("; ");
 
-    const base = [v.id, v.status, v.canTrust, v.openFlags, flagSummary, v.createdAt.toISOString()];
+    const base = [
+      v.id,
+      v.status,
+      v.canTrust,
+      v.openFlags,
+      flagSummary,
+      warningSummary,
+      v.createdAt.toISOString(),
+    ];
     const fieldCells = FIELD_COLUMNS.flatMap(([key]) => {
       const f = v.fields[key];
       return [f?.value ?? "", f ? `${Math.round(f.confidence * 100)}%` : ""];

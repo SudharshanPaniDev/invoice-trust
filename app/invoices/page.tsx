@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { parseFilter, buildInvoiceWhere } from "@/lib/query";
+import { classifyDuplicateField } from "@/lib/duplicate";
 
 export const dynamic = "force-dynamic";
 
@@ -34,6 +35,7 @@ export default async function InvoicesPage({
       invoiceDate: true,
       status: true,
       fileData: true,
+      invoiceNoField: true,
     },
   });
   const trustedCount = await prisma.invoice.count({ where: { ...where, status: "trusted" } });
@@ -194,6 +196,17 @@ export default async function InvoicesPage({
                   <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${badge(inv.status)}`}>
                     {inv.status.replace("_", " ")}
                   </span>
+                  {(() => {
+                    const dup = classifyDuplicateField(inv.invoiceNoField);
+                    if (!dup) return null;
+                    const tone = dup === "hard" ? "bg-danger-bg text-danger" : "bg-warning-bg text-warning";
+                    const label = dup === "hard" ? "duplicate" : "possible duplicate";
+                    return (
+                      <span className={`ml-1.5 rounded-full px-2 py-0.5 text-xs font-medium ${tone}`}>
+                        {label}
+                      </span>
+                    );
+                  })()}
                 </td>
                 <td className="py-2 pr-4">
                   {inv.fileData != null && (
