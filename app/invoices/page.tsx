@@ -36,8 +36,20 @@ export default async function InvoicesPage({
       fileData: true,
     },
   });
+  const trustedCount = await prisma.invoice.count({ where: { ...where, status: "trusted" } });
 
   const inputCls = "rounded-md border border-border bg-background px-2 py-1 text-sm";
+  // Hidden inputs so /api/invoices/export sees exactly the filters currently applied here.
+  const hiddenFilterInputs = (
+    <>
+      <input type="hidden" name="vendor" value={first(params.vendor)} />
+      <input type="hidden" name="status" value={first(params.status)} />
+      <input type="hidden" name="minTotal" value={first(params.minTotal)} />
+      <input type="hidden" name="maxTotal" value={first(params.maxTotal)} />
+      <input type="hidden" name="from" value={first(params.from)} />
+      <input type="hidden" name="to" value={first(params.to)} />
+    </>
+  );
 
   return (
     <main className="mx-auto max-w-4xl px-8 py-10">
@@ -101,6 +113,43 @@ export default async function InvoicesPage({
         {invoices.length} {invoices.length === 1 ? "result" : "results"}
         {hasFilters ? " (filtered)" : ""}
       </p>
+
+      {invoices.length > 0 && (
+        <form
+          action="/api/invoices/export"
+          method="get"
+          className="mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-border bg-surface px-4 py-3 text-sm"
+        >
+          {hiddenFilterInputs}
+          <span className="text-muted">
+            {trustedCount} of {invoices.length} filtered {invoices.length === 1 ? "invoice is" : "invoices are"} trusted.
+          </span>
+          {trustedCount < invoices.length && (
+            <label className="flex items-center gap-1.5 text-muted">
+              <input type="checkbox" name="includeAll" value="true" className="rounded border-border" />
+              Include the {invoices.length - trustedCount} with open flags anyway
+            </label>
+          )}
+          <span className="ml-auto flex gap-3">
+            <button
+              type="submit"
+              name="format"
+              value="csv"
+              className="text-accent hover:text-accent-hover hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            >
+              Download CSV
+            </button>
+            <button
+              type="submit"
+              name="format"
+              value="json"
+              className="text-accent hover:text-accent-hover hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            >
+              Download JSON
+            </button>
+          </span>
+        </form>
+      )}
 
       {invoices.length === 0 ? (
         <div className="mt-6 rounded-lg border border-dashed border-border p-10 text-center text-sm text-muted">

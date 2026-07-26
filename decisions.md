@@ -1714,3 +1714,123 @@ the new provenance check) before being written up here.
 **What I deliberately cut:** fixing every finding from the review instead of the two with
 the clearest value-to-risk ratio; hiding the test-authoring bug the new check caught in
 itself instead of recording it.
+
+---
+
+## D42 — Export (CSV/JSON) built first; duplicate detection deferred, not rejected
+
+**The decision:** add Export as the next new capability — a single
+`GET /api/invoices/export` route (both CSV and JSON), scoped to the current list-page filter
+state, defaulting to trusted invoices only with an explicit, visible override, always
+carrying `status`/`confidence`/`flags` alongside values. Sequenced ahead of the other real
+candidate on the table, cross-invoice duplicate detection — which stays a planned feature for
+later, not something decided against.
+
+**Why this needed real scrutiny before building anything:** the project's stated thesis is
+"AI extraction is commodity; trust is the product." Every feature up to this point can lean
+on the UI to carry that trust — a colored badge, a tooltip, a disabled button (D14). Export is
+the first feature where trust has no pixels to hide behind: once data leaves as a CSV or JSON
+file, the only thing telling a downstream accountant or system whether a number is safe to
+act on is the *data itself*. Built as a plain flattened dump of extracted values, Export
+wouldn't just be generic CRUD — it would be a silent bypass of D14's entire trust gate, since
+nothing would stop an unverified GSTIN from landing straight in a real GST filing. That risk,
+not scope-creep aesthetics, is the actual reason this got the same level of scrutiny as a
+core feature rather than being waved through as an obvious "add a download button."
+
+**The alternatives:**
+- **Duplicate invoice detection** — a separate, already-planned feature (matching vendor +
+  invoice number + total across the dataset), not evaluated here as a rejected competitor.
+  Export is simply first in the build order; duplicate detection is still coming.
+- **A raw "export everything" dump** — rejected per the reasoning above: strips the trust
+  signal at exactly the boundary where it matters most.
+- **Hard-disable the export button until at least one invoice is trusted** — considered,
+  rejected: gates on the wrong thing (whether trust exists *anywhere*), not the right thing
+  (whether trust exists in *this* export), and would block a real, legitimate use — exporting
+  a needs-review batch to work through corrections offline in Excel rather than this app's UI.
+- **A confirmation modal on click, stating the trusted-only default** — considered,
+  rejected: nothing in this app uses a modal anywhere (MarkTrusted, EditableField, and
+  UploadForm all communicate inline) — introducing one here would be the single inconsistent
+  interaction pattern in an otherwise modal-free product, for information that conveys just as
+  well inline (a live count + an override checkbox next to the download buttons) with no new
+  accessibility surface to get right under time pressure.
+
+**The reasoning behind what's exportable:**
+- **Filtered results, not the whole table** — reuses the exact `parseFilter`/
+  `buildInvoiceWhere` from D16 verbatim; a CA exporting "vendor X, this quarter" is the real
+  use case, not a dump of every invoice ever uploaded to a public demo.
+- **Trusted-only by default, with a visible, explicit override** — the safe default without
+  blocking the legitimate needs-review export case; `status`/`confidence`/`flags` are always
+  present columns regardless of scope, so nothing exported is ever ambiguous about its trust
+  state, even if the override is used.
+- **Provenance/bbox cut for v1** — a normalized bbox coordinate means nothing in a
+  spreadsheet, and it only exists for 3 seeded demo invoices anyway (D21); would mostly be
+  empty cells for real data. Named as a natural next step, not built now.
+- **CSV and JSON both, for two different, real personas:** CSV for a **human** (opened in
+  Excel, handed to Tally/QuickBooks/GST filing) — necessarily flatter, invoice-level fields
+  plus confidence/flags, no deep nesting. JSON for a **system** (another program, a second
+  agent, an integration) — full per-field confidence and nested line items, which falls out
+  almost directly from the `ScoredInvoice`/`InvoiceView` shape (D13/D14) already used
+  internally, rather than new modeling.
+- **One route serves both the UI action and any external caller** — `GET
+  /api/invoices/export?format=csv|json&...filters` — the "Download CSV"/"Download JSON" links
+  on `/invoices` just point at it with the current filter state in the query string. No
+  separate export service, no duplicated filter logic.
+
+**Tradeoffs accepted:** CSV output is necessarily less granular than JSON (invoice-level, not
+line-item-level per-field confidence) — a deliberate width/usability tradeoff for a human
+opening it in a spreadsheet, not an oversight. A hand-rolled CSV escaper is used instead of a
+new dependency, consistent with this project's general instinct to avoid pulling in a package
+for something a few lines of code already solves.
+
+**What I deliberately cut:** scheduled/automatic export; a custom column-selection UI;
+provenance/bbox in the output; line-item-level granularity in CSV specifically (JSON only);
+a confirmation modal; hard-gating the button on global trust state instead of defaulting the
+export's own scope safely.
+
+**Built and verified, matching this design with no deviation:** `GET
+/api/invoices/export?format=csv|json&includeAll=&...filters`, plus a plain
+`<form method="get">` on `/invoices` (no client JS, no modal). Confirmed live — trusted-only
+CSV correctly returns only `status: trusted` rows with proper value quoting;
+`includeAll=true` JSON returns the full set with nested per-field confidence/flags/bbox,
+which is just `toView()`'s own shape serialized directly. 96/96 tests, a clean production
+build, and zero new `pnpm a11y` violations after adding the form.
+
+---
+
+## D43 — Collapsed per-field CSV flag columns into one, after actually opening the file
+
+**The decision:** the CSV originally had one "X Flags" column per extracted field (10 of
+them) alongside "X Confidence." Downloaded the real export and opened it — every single one
+of those 10 columns was empty, on every row. Replaced them with one combined `Flags` column
+(e.g. `GSTIN: GSTIN format is invalid`), dropping the sheet from 35 columns to 26.
+
+**Why this wasn't visible from the design alone (D42):** it's structural, not incidental.
+`trusted` status requires `openFlags === 0` (D14), and trusted-only is the export's own
+default scope (D42). So for the common case, 10 of the columns were *guaranteed* empty by
+definition before a single row was ever generated — no amount of reasoning about the design
+in the abstract surfaced that; only opening a real downloaded file did. The same pattern as
+D25 and D39: something can be correctly designed and still be wrong in practice, and the only
+way to know is to look at the real artifact, not the plan for it.
+
+**What stayed, deliberately:** per-field *confidence* columns. These are not redundant the
+same way — a trusted invoice still shows real variation (a field with no verifiable rule
+caps at a damped model score even when nothing is wrong, D13), so per-field confidence
+carries genuine signal even when every flag column would be blank. Only the flags were
+structurally empty; the confidence wasn't.
+
+**The alternatives:**
+- **Make the CSV shape conditional** — include per-field flag columns only when
+  `includeAll=true` is used, omit them for the trusted-only default. Rejected: a CSV's schema
+  changing depending on a query parameter is worse for any downstream script parsing it than
+  one column that's simply blank when there's nothing to report.
+- **Drop flags from CSV entirely, keep only the `openFlags` count** — rejected: the count
+  says *that* something's wrong, not *what* — real information a `includeAll=true` export
+  legitimately needs, per D42's whole reasoning for including flags at all.
+
+**Tradeoffs accepted:** none of substance — verified with a full production build, the full
+test suite (96/96), and a live re-fetch of both an `includeAll=true` and a trusted-only
+export confirming the new column is populated in the first case and empty in the second.
+
+**What I deliberately cut:** per-field flag columns as originally shipped; a conditional CSV
+schema as the fix instead of a genuine consolidation.
+
