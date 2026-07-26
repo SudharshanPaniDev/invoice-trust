@@ -1655,3 +1655,62 @@ suite (96/96) and a production build verified clean after the fix.
 **What I deliberately cut:** treating "we followed the guidance" as equivalent to "we
 verified it" — this entry exists specifically because those turned out to be different
 claims.
+
+---
+
+## D41 — Fixed the two most defensible findings from a self-audit against clean-code principles
+
+**The decision:** ran a critical review of the codebase against SOC/Documentation/DRY/KISS/
+Testing/YAGNI, then fixed the two highest-ROI findings rather than everything found:
+
+1. **DRY — extracted `useAsyncAction`.** `EditableField`, `MarkTrusted`, and `UploadForm`
+   each independently hand-rolled the identical `loading`/`error` state pair and the
+   identical `setLoading(true) → fetch → if(!res.ok) setError → setLoading(false)` shape —
+   three implementations of one pattern. Added `app/_components/useAsyncAction.ts`: the hook
+   owns loading/error and a `run(action)` wrapper; each caller's `action` does its own fetch
+   and throws an `Error` with the user-facing message on failure, success handling (exit
+   edit mode, refresh, redirect) stays local since that part is genuinely different per call
+   site. All three components rewritten to use it; all 96 existing tests passed unchanged,
+   which is itself evidence the refactor didn't change external behavior, only removed
+   duplication.
+
+2. **Testing — made the D25 regression permanent.** The highest-severity bug this project
+   found (the provenance overlay landing on the wrong region of the document) was verified
+   once, live, with a throwaway script that was deleted afterward — meaning zero regression
+   protection existed for it going into this review. Added `scripts/check-provenance.ts`
+   (`pnpm check:provenance`): for a set of known bbox-bearing fields on a seeded sample, it
+   reads the field's actual stored `bbox` straight from Postgres (not anything the component
+   itself computed), independently derives the expected overlay pixel rect from the canvas's
+   real `getBoundingClientRect()`, and asserts the rendered overlay matches within 3px — the
+   same verification method D25 used, just kept instead of thrown away.
+
+**A real bug the new check caught in itself, worth recording honestly:** the first run
+reported 4/5 fields matching and "Total" failing by a real, non-random margin (~16px). Not a
+regression in the app — a bug in the *test*: Playwright's `hasText` does a case-insensitive
+substring match by default, so matching a row by `hasText: "Total"` also matched the
+**Subtotal** row (it contains "total"), and `.first()` picked Subtotal since it appears
+earlier in the table. Fixed by matching the exact label cell (`^label$` anchored) and
+walking up to its `<tr>`, rather than matching against the row's aggregated text. All 5
+fields pass now. Documenting this because it's the same discipline the rest of this project
+has tried to hold itself to — a test that "looks green" isn't the same as a test that's
+actually checking the right thing, and this one wasn't, briefly.
+
+**Also hit, and worth noting once more:** the DB connection failed twice with `P1001 Can't
+reach database server` before this script ran successfully — confirmed as a real, current
+Neon flakiness event (not a bug in the new script) by rerunning an already-working script
+(`pnpm a11y`) at the same moment and getting the identical failure. Consistent with D31's
+documented finding; no new mitigation attempted here beyond retrying.
+
+**What I deliberately left alone, and why (from the same review):** the `invoices/page.tsx`
+SOC inconsistency (inlines its filter form and table rather than extracting components like
+its sibling pages) and the size of `scripts/generate-samples.ts` (441 lines for demo-asset
+generation) — both real, both named in the review, both judged not worth the risk of
+touching this close to submission for the value they'd return.
+
+**Tradeoffs accepted:** none of substance — both changes were verified (96/96 tests, a clean
+production build after fixing one type error the build caught that `tsx` didn't, and 5/5 on
+the new provenance check) before being written up here.
+
+**What I deliberately cut:** fixing every finding from the review instead of the two with
+the clearest value-to-risk ratio; hiding the test-authoring bug the new check caught in
+itself instead of recording it.

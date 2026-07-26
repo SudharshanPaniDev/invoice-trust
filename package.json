@@ -15,7 +15,8 @@
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx --env-file=.env prisma/seed.ts",
     "eval": "tsx --env-file=.env scripts/run-evals.ts",
-    "a11y": "tsx --env-file=.env scripts/check-accessibility.ts"
+    "a11y": "tsx --env-file=.env scripts/check-accessibility.ts",
+    "check:provenance": "tsx --env-file=.env scripts/check-provenance.ts"
   },
   "dependencies": {
     "@google/genai": "^2.13.0",

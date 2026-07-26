@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useAsyncAction } from "./useAsyncAction";
 
 interface UploadResponse {
   id: string;
@@ -14,26 +15,20 @@ interface UploadResponse {
 export function UploadForm() {
   const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const { loading, error, run } = useAsyncAction();
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!file) return;
-    setLoading(true);
-    setError(null);
 
-    const fd = new FormData();
-    fd.append("file", file);
-    const res = await fetch("/api/invoices", { method: "POST", body: fd });
-    const json = await res.json();
-
-    if (!res.ok) {
-      setLoading(false);
-      setError(json.error ?? "Upload failed");
-      return;
-    }
-    router.push(`/invoices/${(json as UploadResponse).id}`);
+    await run(async () => {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/invoices", { method: "POST", body: fd });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Upload failed");
+      router.push(`/invoices/${(json as UploadResponse).id}`);
+    });
   }
 
   return (

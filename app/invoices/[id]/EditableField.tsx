@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useAsyncAction } from "@/app/_components/useAsyncAction";
 
 /** Inline-editable field value. Saving PATCHes the invoice, which re-validates the whole
  *  thing (D17); router.refresh() then re-renders confidence/flags and the trust gate. */
@@ -17,25 +18,22 @@ export function EditableField({
   const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value ?? "");
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { loading: saving, error, run } = useAsyncAction();
 
   async function save() {
-    setSaving(true);
-    setError(null);
-    const res = await fetch(`/api/invoices/${invoiceId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ field: fieldKey, value: draft }),
+    await run(async () => {
+      const res = await fetch(`/api/invoices/${invoiceId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ field: fieldKey, value: draft }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        throw new Error(j.error ?? "Save failed");
+      }
+      setEditing(false);
+      router.refresh();
     });
-    setSaving(false);
-    if (!res.ok) {
-      const j = await res.json().catch(() => ({}));
-      setError(j.error ?? "Save failed");
-      return;
-    }
-    setEditing(false);
-    router.refresh();
   }
 
   if (!editing) {

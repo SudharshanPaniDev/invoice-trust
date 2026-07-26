@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useAsyncAction } from "@/app/_components/useAsyncAction";
 
 export function MarkTrusted({
   id,
@@ -13,20 +13,17 @@ export function MarkTrusted({
   openFlags: number;
 }) {
   const router = useRouter();
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { loading, error, run } = useAsyncAction();
 
   async function onClick() {
-    setLoading(true);
-    setError(null);
-    const res = await fetch(`/api/invoices/${id}/trust`, { method: "POST" });
-    setLoading(false);
-    if (!res.ok) {
-      const json = await res.json().catch(() => ({}));
-      setError(json.error ?? "Could not mark trusted");
-      return;
-    }
-    router.refresh();
+    await run(async () => {
+      const res = await fetch(`/api/invoices/${id}/trust`, { method: "POST" });
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error(json.error ?? "Could not mark trusted");
+      }
+      router.refresh();
+    });
   }
 
   return (
