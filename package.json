@@ -14,7 +14,8 @@
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx --env-file=.env prisma/seed.ts",
-    "eval": "tsx --env-file=.env scripts/run-evals.ts"
+    "eval": "tsx --env-file=.env scripts/run-evals.ts",
+    "a11y": "tsx --env-file=.env scripts/check-accessibility.ts"
   },
   "dependencies": {
     "@google/genai": "^2.13.0",
@@ -28,6 +29,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.12.1",
     "@tailwindcss/postcss": "^4",
     "@testing-library/jest-dom": "^7.0.0",
     "@testing-library/react": "^16.3.2",

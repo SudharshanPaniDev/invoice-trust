@@ -1597,3 +1597,47 @@ the full suite (96/96) and a production build before this entry was written.
 **What I deliberately cut:** adding a client-injection parameter to `lib/correct.ts`/the trust
 route purely to make them "properly" testable — the existing module-mock boundary already
 tests the real contract without changing production code shape for testing's sake.
+
+---
+
+## D39 — Ran an actual accessibility check; found and fixed two real WCAG AA failures
+
+**The decision:** added `scripts/check-accessibility.ts` (`pnpm a11y`) — runs axe-core
+(`@axe-core/playwright`) against the three real page types (upload/landing, invoices list,
+invoice detail with the provenance viewer) and reports every WCAG 2A/2AA/2.1A/2.1AA
+violation. D27's UI pass said it was "guided by agent-skills' accessibility conventions" —
+that was true but never verified. This turns the claim into a checked fact.
+
+**What it found, on the first real run:** not zero. Two genuine issues, not stylistic
+nitpicks:
+- **Color contrast (serious), every page:** `--muted` (`#8a7b6c`) against white/cream
+  backgrounds measured 3.79–4.09:1; WCAG AA requires 4.5:1 for normal text. `--warning`
+  (`#b7791f`) against `--warning-bg` measured 3.25:1, same requirement. Both are text colors
+  used constantly throughout the D27 pass (secondary text, helper copy, the disclaimer
+  banner) — a real, widespread contrast failure, not an edge case.
+- **Missing form label (critical), landing page:** the file-upload `<input type="file">` had
+  no accessible label — a screen reader had no way to announce what it was.
+
+**The fix:** darkened `--muted` to `#6f6153` (5.55–5.98:1 against the same backgrounds) and
+`--warning` to `#8a5a12` (5.27:1) — same hue family, just dark enough to clear 4.5:1 with a
+safe margin, verified with the same contrast-ratio formula axe uses before touching the file.
+Added `aria-label="Invoice file to upload"` to the file input. Checked every other token
+(dark mode, accent, success, danger, both modes) against the same formula — all already clear
+4.66:1 or higher; only these two were actually broken.
+
+**The alternatives:**
+- **Trust the agent-skills guidance without verifying** — this is exactly what D27 did, and
+  it was wrong on two real points. Guidance describes intent; only checking the rendered
+  output confirms the intent was met.
+- **Lower the darkening just enough to pass, no margin** — rejected; picked values with real
+  headroom (5.2–6.0:1) rather than shaving right up against the 4.5:1 line, since font
+  rendering and anti-aliasing can shift measured contrast slightly across environments.
+
+**Tradeoffs accepted:** `--muted` and `--warning` are visibly a touch darker than before —
+a deliberate, necessary tradeoff; the alternative was text a meaningful fraction of users
+genuinely cannot read reliably. One new devDependency (`@axe-core/playwright`). Full test
+suite (96/96) and a production build verified clean after the fix.
+
+**What I deliberately cut:** treating "we followed the guidance" as equivalent to "we
+verified it" — this entry exists specifically because those turned out to be different
+claims.

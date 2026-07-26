@@ -45,6 +45,7 @@ export function UploadForm() {
         <input
           type="file"
           accept="application/pdf,image/*"
+          aria-label="Invoice file to upload"
           onChange={(e) => setFile(e.target.files?.[0] ?? null)}
           className="flex-1 text-sm text-muted file:mr-3 file:rounded-md file:border-0 file:bg-background file:px-3 file:py-1.5 file:text-sm file:font-medium file:text-foreground hover:file:bg-border/50"
         />
