@@ -95,6 +95,60 @@ describe("ScoredFields — flags", () => {
   });
 });
 
+describe("ScoredFields — confirm (D48)", () => {
+  it("offers confirm on an editable, unverified field with no value and no blocking flag", () => {
+    render(
+      <ScoredFields
+        fields={{ vendorName: mkField({ confidence: 0.69, verified: false }) }}
+        editInvoiceId="inv1"
+      />,
+    );
+    expect(within(vendorRow()).getByRole("button", { name: "confirm" })).toBeInTheDocument();
+  });
+
+  it("does not offer confirm outside an editable context", () => {
+    render(<ScoredFields fields={{ vendorName: mkField({ confidence: 0.69, verified: false }) }} />);
+    expect(within(vendorRow()).queryByRole("button", { name: "confirm" })).not.toBeInTheDocument();
+  });
+
+  it("does not offer confirm on an already rule-verified field", () => {
+    render(
+      <ScoredFields
+        fields={{ vendorName: mkField({ confidence: 0.9, verified: true }) }}
+        editInvoiceId="inv1"
+      />,
+    );
+    expect(within(vendorRow()).queryByRole("button", { name: "confirm" })).not.toBeInTheDocument();
+  });
+
+  it("does not offer confirm on a field with an open flag", () => {
+    render(
+      <ScoredFields
+        fields={{ vendorName: mkField({ confidence: 0.3, flags: ["Required field is missing"] }) }}
+        editInvoiceId="inv1"
+      />,
+    );
+    expect(within(vendorRow()).queryByRole("button", { name: "confirm" })).not.toBeInTheDocument();
+  });
+
+  it("does not offer confirm on a field with no value", () => {
+    render(<ScoredFields fields={{ vendorName: mkField({ value: null }) }} editInvoiceId="inv1" />);
+    expect(within(vendorRow()).queryByRole("button", { name: "confirm" })).not.toBeInTheDocument();
+  });
+
+  it("shows a 'confirmed' tag and hides the confirm button once a field is confirmed", () => {
+    render(
+      <ScoredFields
+        fields={{ vendorName: mkField({ confidence: 0.85, verified: true, confirmed: true }) }}
+        editInvoiceId="inv1"
+      />,
+    );
+    const row = within(vendorRow());
+    expect(row.getByText("confirmed")).toBeInTheDocument();
+    expect(row.queryByRole("button", { name: "confirm" })).not.toBeInTheDocument();
+  });
+});
+
 describe("ScoredFields — editing", () => {
   it("shows an edit affordance when editInvoiceId is provided", () => {
     render(

@@ -1,5 +1,6 @@
 import type { ScoredField } from "@/lib/validation/confidence";
 import { EditableField } from "../invoices/[id]/EditableField";
+import { ConfirmField } from "../invoices/[id]/ConfirmField";
 import { Tooltip } from "./Tooltip";
 
 const FIELDS: [string, string][] = [
@@ -28,6 +29,9 @@ function confidenceTitle(f: ScoredField): string {
   if (f.flags.length > 0) return f.flags.join(" · ");
   if (f.corrected) {
     return "Human-corrected — no rule can verify this field further; 95% is this system's ceiling for unverifiable fields, not partial trust.";
+  }
+  if (f.confirmed) {
+    return "Human-confirmed — no rule can check this field, but a person affirmed the value is correct as-is; 85% reflects real but weaker evidence than a passed rule check or an actual correction.";
   }
   if (f.verified) {
     return "Verified by a rule (arithmetic, checksum, date order, or currency check); 90% is this system's ceiling even when a check passes.";
@@ -82,11 +86,21 @@ function Value({
       edited
     </span>
   ) : null;
+  const confirmed = f?.confirmed ? (
+    <span className="ml-1 rounded-full bg-border/40 px-1.5 py-0.5 text-[10px] font-medium text-muted">
+      confirmed
+    </span>
+  ) : null;
+  // Only offer "confirm" where there's actually something unresolved to affirm: a field
+  // with a value, no blocking flag, and not already rule-verified/corrected/confirmed.
+  const canConfirm = !!editInvoiceId && !f?.verified && f?.value != null && (f?.flags.length ?? 0) === 0;
   if (editInvoiceId) {
     return (
       <>
         <EditableField invoiceId={editInvoiceId} fieldKey={fieldKey} value={f?.value ?? null} />
         {corrected}
+        {confirmed}
+        {canConfirm && <ConfirmField invoiceId={editInvoiceId} fieldKey={fieldKey} />}
       </>
     );
   }
@@ -94,6 +108,7 @@ function Value({
     <span className="font-medium">
       {f?.value ?? "—"}
       {corrected}
+      {confirmed}
     </span>
   );
 }
@@ -118,8 +133,9 @@ export function ScoredFields({
   return (
     <>
       <p className="mb-2 text-xs text-muted">
-        Confidence caps at 90% (rule-verified) or 95% (human-verified) — hover a badge for
-        why. This system never claims 100%, only what's actually been checked.
+        Confidence caps at 90% (rule-verified), 95% (human-corrected), or 85%
+        (human-confirmed) — hover a badge for why. This system never claims 100%, only
+        what's actually been checked.
       </p>
       <table className="w-full border-collapse text-sm">
         <thead>

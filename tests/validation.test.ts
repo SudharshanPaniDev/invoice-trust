@@ -85,4 +85,25 @@ describe("scoreInvoice — earned confidence (D13)", () => {
     expect(s.fields.total.confidence).toBeLessThanOrEqual(0.3);
     expect(s.overall.canTrust).toBe(false);
   });
+
+  it("a human confirmation (no value change) raises an otherwise-uncheckable field to 85%, below a correction (D48)", () => {
+    const s = scoreInvoice(makeInvoice(), new Set(), new Set(["vendorName"]));
+    expect(s.fields.vendorName.confirmed).toBe(true);
+    expect(s.fields.vendorName.corrected).toBeUndefined();
+    expect(s.fields.vendorName.verified).toBe(true);
+    expect(s.fields.vendorName.confidence).toBe(0.85);
+  });
+
+  it("a rule-verified field always outranks a confirmation on the same field", () => {
+    const s = scoreInvoice(makeInvoice(), new Set(), new Set(["total"]));
+    expect(s.fields.total.confidence).toBe(0.9);
+    expect(s.fields.total.confirmed).toBeUndefined();
+  });
+
+  it("a correction always outranks a confirmation on the same field", () => {
+    const s = scoreInvoice(makeInvoice(), new Set(["vendorName"]), new Set(["vendorName"]));
+    expect(s.fields.vendorName.confidence).toBe(0.95);
+    expect(s.fields.vendorName.corrected).toBe(true);
+    expect(s.fields.vendorName.confirmed).toBeUndefined();
+  });
 });

@@ -2079,3 +2079,87 @@ approach, and filtering isn't a high-frequency interaction here.
 **What I deliberately cut:** nothing new was built for this entry — it exists to record an
 architecture decision that was already live but never written down.
 
+---
+
+## D48 — A real "confirm" tier (85%), and resubmitting the same value stops being a fake one
+
+**The decision:** two related fixes to inline correction (D17), landed together because the
+second only makes sense once the first closes off the backdoor it was standing in for.
+
+1. **Resubmitting a field's unchanged value is no longer treated as a correction.**
+   `applyCorrection` (`lib/correct.ts`) now compares the submitted value against the field's
+   current value before adding it to `correctedKeys`. Identical → no-op: no `corrected`
+   flag, no confidence bump, no "edited" tag.
+2. **A new, separate `confirm` action** lets a human explicitly affirm an
+   otherwise-unverifiable field's value is correct, *without* editing it. It's its own
+   endpoint (`POST /api/invoices/:id/confirm`, `lib/correct.ts`'s `applyConfirmation`), its
+   own marker on `ScoredField` (`confirmed?: boolean`, parallel to `corrected`), and its own
+   confidence ceiling: **85%** — real evidence, so it beats an unchecked damped model
+   estimate, but below both 90% (rule-verified) and 95% (corrected), since a human glancing
+   at a value and clicking "confirm" is weaker evidence than either a deterministic rule
+   passing or an actual fix.
+
+**The distinction, made concrete:**
+
+| Action | Value touched? | Score behavior |
+|---|---|---|
+| Edit, same value resubmitted | No | Unchanged — stays at whatever it was (e.g. 69%) |
+| Edit, value actually changed | Yes | Jumps to 95% (corrected) |
+| Confirm | No | Jumps to 85% (confirmed) |
+
+**What prompted it:** the user found the bug behind fix #1 directly — opened `vendorName`'s
+edit control (showing 69%, an unverifiable damped model estimate), clicked save with no
+change, and got back "edited" at 95%. Nothing had actually been edited. I built fix #1
+alone first. The user then pointed out the natural consequence: with the backdoor closed,
+there's now no way to ever raise an unverifiable-but-genuinely-correct field's confidence
+without literally typing a throwaway edit and reverting it — a real gap the fix exposed, not
+one it invented. That's what fix #2 answers.
+
+**Why 85%, not 90% (the user's first suggestion):** 90% is currently the exclusive signal
+for "a deterministic rule passed" (arithmetic, checksum, date-order, currency). A one-click
+human confirm is weaker evidence than that — no forced engagement with the source document
+the way retyping a value at least requires, and real rubber-stamp risk under review
+fatigue. Giving both the identical number would mean "90% ✓" stops meaning one specific
+thing, which is exactly the property this whole app is built to protect (D2/D13). 85% sits
+strictly between the damped ceiling (≤70%) and both verified tiers (90/95), so every number
+on the badge stays traceable to exactly one kind of evidence, and hovering isn't required to
+know two 90%s aren't the same claim (it already isn't required for 90 vs 95, either).
+
+**Why a separate action instead of reusing the edit flow:** confirm and correct are
+different claims — "I changed this" vs. "I looked, it's already right" — and D48's fix #1
+exists specifically because conflating them (a no-op edit silently acting as a confirm) was
+the bug. A dedicated `applyConfirmation` that never writes a value, and a dedicated
+`confirmed` marker independent of `corrected`, keeps that distinction real in the data model,
+not just cosmetic in the UI copy.
+
+**Ordering and precedence, made explicit in `scoreField`:** a failed rule still floors
+everything, regardless of any confirm/correct history (D17's principle: arithmetic can't be
+overridden by human affirmation). A passed rule (0.9) or an actual correction (0.95) always
+outranks a mere confirmation on the same field — checked in that order, and the `confirmed`
+output flag is only ever set when the confirm branch is the one that actually produced the
+confidence value, not just because a stray `confirmedKeys` entry exists. Re-editing a
+previously-confirmed field also clears its `confirmed` marker (`applyCorrection` calls
+`confirmedKeys.delete(fieldKey)` on a real edit) — a genuine correction supersedes an earlier
+confirmation, it doesn't coexist with it.
+
+**Where confirm is offered in the UI:** only where there's something real to affirm —
+`editInvoiceId` present (detail page, not read-only), the field has a value, has no open
+flag, and isn't already `verified` (rule-passed, corrected, or already confirmed). A field
+blocked by a failed rule never gets a confirm button; there's nothing to affirm past a
+concrete check failing.
+
+**The alternative rejected:** letting a bare click reach 90%, reusing the rule-verified tier
+directly — the user's original proposal. Rejected for the reason above; would have been
+faster to ship but would have quietly broken the one property (a badge number implies a
+specific kind of evidence) that the rest of the confidence model exists to guarantee.
+
+**Tradeoffs accepted:** one more endpoint, one more `ScoredField` marker, one more UI
+affordance for a fairly narrow case (unverifiable fields only — rule-checkable fields never
+show a confirm button, since a rule either already passed them or is actively blocking
+them). Accepted because the alternative was either the mislabeling bug staying live, or a
+"fix" that just moved the same mislabeling from 95% to 90%.
+
+**What I deliberately cut:** reusing 90% for confirm; folding confirm into the existing edit
+flow instead of a separate action/marker; any UI for confirming a field that already has an
+open flag (a real correction is what that requires, not an affirmation).
+
