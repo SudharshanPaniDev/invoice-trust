@@ -1981,3 +1981,58 @@ affect it.
 export/duplicate UI — the written description is accurate and current; the image is a nice-
 to-have, not a correctness issue, and not worth the scope this late.
 
+---
+
+## D46 — Cleaned up accumulated test data; kept a deliberate duplicate pair, not zero
+
+**The decision:** deleted 14 of 19 invoice rows that had accumulated from this session's own
+manual testing (repeated uploads of the same samples across GSTIN, fixture, missing-fields,
+and phone-photo checks), keeping exactly 5: the 3 seeded provenance samples (D24, required —
+`DownloadSamples` and the provenance viewer resolve them by ID) and one deliberately-kept
+duplicate pair (the Metro Office Supplies rows from D44's own live duplicate-detection test).
+Also added a short note to the invoices list — first written to disclose that real test
+uploads, not just curated samples, might appear there, then revised once the cleanup made
+that caveat moot: the final wording states plainly what the 5 rows *are* (the 3 seeded
+samples plus a deliberate Metro Office Supplies duplicate pair), not an apology for messiness
+that no longer exists.
+
+**What prompted it:** a screenshot showed several visually-identical pairs (Greenleaf,
+Northgate, Acme) sitting in the list with no duplicate badge, while only the Metro pair —
+the newest — was flagged. Not a bug: exactly the D44-documented behavior (no retroactive
+scan). But to a reviewer browsing cold, with no visibility into *when* each row was created
+relative to when the feature shipped, it reads as the feature working inconsistently rather
+than working exactly as designed on a timeline that isn't visible in the UI.
+
+**Why keep the Metro pair instead of a fully duplicate-free 5:** it's the only remaining
+proof, visible directly in the list without any action, that duplicate detection actually
+does something. A fully clean set with zero repeats would look tidier but would mean nobody
+browsing the demo could see the feature fire unless they re-uploaded a sample themselves.
+
+**The alternatives:**
+- **Delete nothing, rely on the disclosure note alone** — considered, and still shipped
+  alongside the cleanup, but the note explains messiness rather than removing it; a reviewer
+  still has to read prose to make sense of what they're looking at instead of the list just
+  reading cleanly on its own.
+- **Keep 5 fully unique rows, no duplicate pair** — the user's first instinct; reconsidered
+  in favor of keeping one deliberate pair specifically because it's the only in-list evidence
+  of D44 actually working, not just described in `decisions.md`.
+
+**How this was executed, given it's destructive on shared/live data:** the invoices table
+also backs the public deployment (same Neon database, no per-environment separation, D18).
+Listed every row with its id/vendor/total/status/createdAt, proposed an explicit keep/delete
+split, and only ran the delete after the user confirmed the exact list — not a blanket
+"clean up the test data" instruction acted on unilaterally. `LineItem` cascades on delete
+(`onDelete: Cascade` in the schema), so no orphaned rows. Verified after: exactly 5 rows
+remain, matching the confirmed keep-list precisely (checked for zero overlap between the
+delete and keep id lists before running), and `/`, `/invoices`, and both remaining non-seeded
+detail pages all still return 200.
+
+**Tradeoffs accepted:** the deleted rows are gone — no soft-delete, no undo. Acceptable here
+because they were exclusively this session's own manual test artifacts, never real user data,
+and their existence was already fully served by having been used for the checks they were
+created for.
+
+**What I deliberately cut:** deleting the Metro pair for a "zero duplicates" clean state;
+soft-deleting/archiving instead of a real delete, for data that was never anything but
+throwaway test input in the first place.
+

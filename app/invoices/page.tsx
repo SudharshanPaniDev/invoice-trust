@@ -59,6 +59,11 @@ export default async function InvoicesPage({
       <p className="mt-1 text-sm text-muted">
         Search and filter everything that&apos;s been extracted so far.
       </p>
+      <p className="mt-2 rounded-lg border border-border bg-surface p-3 text-xs text-muted">
+        This list is a small curated set: the 3 seeded samples (clean / invalid GSTIN /
+        mismatch) plus a deliberate duplicate pair (Metro Office Supplies) demonstrating
+        duplicate detection in action.
+      </p>
 
       {/* Structured query (D4) — filters map to indexed columns (D9) */}
       <form
