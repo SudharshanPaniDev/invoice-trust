@@ -28,11 +28,6 @@ export default async function InvoiceDetail({
         ← All invoices
       </Link>
       <h1 className="mt-2 text-2xl font-semibold">Invoice</h1>
-      <p className="mt-1 text-xs text-muted">
-        <code className="rounded bg-surface px-1 py-0.5">{view.id}</code> · status{" "}
-        <span className="font-medium text-foreground">{view.status}</span> ·{" "}
-        {view.createdAt.toISOString().slice(0, 10)}
-      </p>
       {view.hasDocument && (
         <p className="mt-2 inline-block rounded-full border border-border bg-border/20 px-2 py-1 text-xs font-medium text-muted">
           Sample invoice — curated example, not a real submission (see decisions.md D21/D24)

@@ -2036,3 +2036,46 @@ created for.
 soft-deleting/archiving instead of a real delete, for data that was never anything but
 throwaway test input in the first place.
 
+---
+
+## D47 — Invoice list filters run server-side, not client-side
+
+**The decision:** filtering on `/invoices` was never a client-side JS feature — it's a plain
+`<form method="get">` that reloads the page with `?vendor=...&status=...&minTotal=...` etc. in
+the URL. The server component reads `searchParams`, `parseFilter`/`buildInvoiceWhere`
+(`lib/query.ts`) turn that into a Prisma `where` clause, and only matching rows are ever
+fetched from Postgres. No array of all invoices gets sent to the browser and filtered there.
+This wasn't a new build — it's how the structured query feature (D4) was already
+implemented; this entry documents the reasoning after being asked directly whether it was
+client- or server-side.
+
+**Why server-side:**
+- **Same principle as D14's trust gate** — trust-relevant state (e.g. filtering to
+  `status=trusted`) stays authoritative on the server, not something a client could spoof by
+  filtering a larger fetched set in JS.
+- **Uses indexed columns (D9)** — filter fields map to real Prisma/Postgres columns, so the
+  `where` clause benefits from actual indexes. A client-side filter over pre-fetched rows
+  gets none of that, and means fetching every row regardless of how many actually match.
+- **No client JS, consistent with Export (D42/43)** — same "plain form, no modal, works
+  without JS" philosophy already used for the export buttons on this same page.
+- **Shareable, bookmarkable URLs** — filters live in query params, not component state that
+  resets on refresh. Fits the "structured, queryable data" thesis (D4) better than client
+  state would.
+- **Reused directly by Export** — `hiddenFilterInputs` forwards the exact same query params
+  into `/api/invoices/export`, so `buildInvoiceWhere` is the one place filter logic lives for
+  both the list view and the export route. If filtering were client-side, Export would still
+  need its own independent server-side filter logic — you can't trust a client-filtered
+  subset for a data export — so client-side filtering would mean building the same logic
+  twice, not once.
+
+**The alternative:** fetch all invoices once, filter client-side in JS. Not seriously
+considered — it fails all five reasons above at once, and the export route would have
+needed the server-side version anyway.
+
+**Tradeoffs accepted:** a full page reload on every filter change, no optimistic/partial UI
+update. Acceptable — consistent with the rest of the app's no-client-JS-where-avoidable
+approach, and filtering isn't a high-frequency interaction here.
+
+**What I deliberately cut:** nothing new was built for this entry — it exists to record an
+architecture decision that was already live but never written down.
+
