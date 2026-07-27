@@ -26,7 +26,7 @@ export function ConfirmField({ invoiceId, fieldKey }: { invoiceId: string; field
   }
 
   return (
-    <span className="ml-1 inline-flex items-center gap-1">
+    <span className="inline-flex items-center gap-1">
       <button
         onClick={confirm}
         disabled={loading}

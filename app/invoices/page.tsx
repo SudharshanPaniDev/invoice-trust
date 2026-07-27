@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
 import { parseFilter, buildInvoiceWhere } from "@/lib/query";
-import { classifyDuplicateField } from "@/lib/duplicate";
+import { classifyAllDuplicates } from "@/lib/duplicate";
 
 export const dynamic = "force-dynamic";
 
@@ -35,10 +35,12 @@ export default async function InvoicesPage({
       invoiceDate: true,
       status: true,
       fileData: true,
-      invoiceNoField: true,
     },
   });
   const trustedCount = await prisma.invoice.count({ where: { ...where, status: "trusted" } });
+  // Live, not persisted (D50) — one query classifying every current invoice at once, so
+  // this badge can never go stale the way a stored flag could (e.g. after a delete).
+  const duplicates = await classifyAllDuplicates();
 
   const inputCls = "rounded-md border border-border bg-background px-2 py-1 text-sm";
   // Hidden inputs so /api/invoices/export sees exactly the filters currently applied here.
@@ -202,7 +204,7 @@ export default async function InvoicesPage({
                     {inv.status.replace("_", " ")}
                   </span>
                   {(() => {
-                    const dup = classifyDuplicateField(inv.invoiceNoField);
+                    const dup = duplicates.get(inv.id) ?? null;
                     if (!dup) return null;
                     const tone = dup === "hard" ? "bg-danger-bg text-danger" : "bg-warning-bg text-warning";
                     const label = dup === "hard" ? "duplicate" : "possible duplicate";

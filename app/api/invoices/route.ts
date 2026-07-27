@@ -30,12 +30,14 @@ export async function POST(req: NextRequest) {
 
   // Cross-invoice duplicate detection (D44) — never blocks the upload itself, only flags/
   // warns the stored result, same as every other validation issue in this app.
-  const dup = await findDuplicates(
-    scored.fields.vendorGSTIN?.value ?? null,
-    scored.fields.invoiceNo?.value ?? null,
-    parseAmount(scored.fields.total?.value) ?? null,
-    parseDate(scored.fields.invoiceDate?.value)?.date ?? null,
-  );
+  const dup = await findDuplicates({
+    gstin: scored.fields.vendorGSTIN?.value ?? null,
+    invoiceNo: scored.fields.invoiceNo?.value ?? null,
+    total: parseAmount(scored.fields.total?.value) ?? null,
+    invoiceDate: parseDate(scored.fields.invoiceDate?.value)?.date ?? null,
+    vendorName: scored.fields.vendorName?.value ?? null,
+    currency: scored.fields.currency?.value ?? null,
+  });
   applyDuplicateResult(scored, dup);
 
   const invoice = await storeInvoice(result.data, scored, file.name);

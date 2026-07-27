@@ -1,40 +1,35 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { POST } from "@/app/api/invoices/[id]/trust/route";
 import { prisma } from "@/lib/db";
+import { getLiveScoredInvoice } from "@/lib/correct";
+import type { ScoredInvoice } from "@/lib/validation/confidence";
 
 vi.mock("@/lib/db", () => ({
-  prisma: {
-    invoice: {
-      findUnique: vi.fn(),
-      update: vi.fn(),
-    },
-  },
+  prisma: { invoice: { update: vi.fn() } },
+}));
+vi.mock("@/lib/correct", () => ({
+  getLiveScoredInvoice: vi.fn(),
 }));
 
 const params = (id: string) => ({ params: Promise.resolve({ id }) });
 
-/** Minimal Prisma row shape `toView` can reshape — a scored field just needs `confidence`
- *  and `flags` to be recognized by `asField` in lib/invoice-view.ts. */
-function mkRow(overrides: { totalFlags?: string[]; status?: string } = {}) {
+function mkScored(overall: Partial<ScoredInvoice["overall"]> = {}): ScoredInvoice {
   return {
-    id: "inv1",
-    status: overrides.status ?? "needs_review",
-    fileUrl: "x.pdf",
-    createdAt: new Date("2026-01-01"),
-    fileData: null,
-    lineItems: [],
-    totalField: { value: "100.00", confidence: 0.9, verified: true, flags: overrides.totalFlags ?? [] },
+    isInvoice: true,
+    fields: {},
+    overall: { confidence: 0.9, status: "high", canTrust: true, openFlags: 0, ...overall },
+    rules: [],
   };
 }
 
 beforeEach(() => {
-  vi.mocked(prisma.invoice.findUnique).mockReset();
   vi.mocked(prisma.invoice.update).mockReset();
+  vi.mocked(getLiveScoredInvoice).mockReset();
 });
 
-describe("POST /api/invoices/:id/trust — server-enforced gate (D14)", () => {
+describe("POST /api/invoices/:id/trust — server-enforced gate (D14), now a LIVE check (D50)", () => {
   it("404s when the invoice doesn't exist", async () => {
-    vi.mocked(prisma.invoice.findUnique).mockResolvedValue(null as never);
+    vi.mocked(getLiveScoredInvoice).mockResolvedValue(null);
 
     const res = await POST(new Request("http://x"), params("missing"));
 
@@ -43,10 +38,8 @@ describe("POST /api/invoices/:id/trust — server-enforced gate (D14)", () => {
     expect(prisma.invoice.update).not.toHaveBeenCalled();
   });
 
-  it("refuses (409) with an open flag, even though nothing about the request asked the UI first", async () => {
-    vi.mocked(prisma.invoice.findUnique).mockResolvedValue(
-      mkRow({ totalFlags: ["Subtotal + tax doesn't match total"] }) as never,
-    );
+  it("refuses (409) with an open flag — computed live via getLiveScoredInvoice, not a stored flag", async () => {
+    vi.mocked(getLiveScoredInvoice).mockResolvedValue(mkScored({ canTrust: false, openFlags: 1 }));
 
     const res = await POST(new Request("http://x"), params("inv1"));
 
@@ -57,7 +50,7 @@ describe("POST /api/invoices/:id/trust — server-enforced gate (D14)", () => {
   });
 
   it("marks trusted and persists it when there are zero open flags", async () => {
-    vi.mocked(prisma.invoice.findUnique).mockResolvedValue(mkRow() as never);
+    vi.mocked(getLiveScoredInvoice).mockResolvedValue(mkScored({ canTrust: true, openFlags: 0 }));
     vi.mocked(prisma.invoice.update).mockResolvedValue({} as never);
 
     const res = await POST(new Request("http://x"), params("inv1"));
@@ -70,12 +63,21 @@ describe("POST /api/invoices/:id/trust — server-enforced gate (D14)", () => {
     });
   });
 
-  it("refuses even a 'failed' (not-an-invoice) row, regardless of flags", async () => {
-    vi.mocked(prisma.invoice.findUnique).mockResolvedValue(mkRow({ status: "failed" }) as never);
+  it("refuses when canTrust is false regardless of the open-flag count (e.g. a live duplicate match)", async () => {
+    vi.mocked(getLiveScoredInvoice).mockResolvedValue(mkScored({ canTrust: false, openFlags: 0 }));
 
     const res = await POST(new Request("http://x"), params("inv1"));
 
     expect(res.status).toBe(409);
     expect(prisma.invoice.update).not.toHaveBeenCalled();
+  });
+
+  it("asks for the live check by invoice id, not a cached/stored verdict", async () => {
+    vi.mocked(getLiveScoredInvoice).mockResolvedValue(mkScored());
+    vi.mocked(prisma.invoice.update).mockResolvedValue({} as never);
+
+    await POST(new Request("http://x"), params("inv1"));
+
+    expect(getLiveScoredInvoice).toHaveBeenCalledWith("inv1");
   });
 });

@@ -1,31 +1,30 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { toView, type StoredInvoice } from "@/lib/invoice-view";
+import { getLiveScoredInvoice } from "@/lib/correct";
 
 export const runtime = "nodejs";
 
 /**
- * Mark an invoice trusted. Server-enforced gate (D14): recompute open flags from the stored
- * per-field trust JSON and refuse (409) if any flag is open — a client-side disable is not
- * enough, since the whole product is that the system won't vouch for unverified numbers.
+ * Mark an invoice trusted. Server-enforced gate (D14): recompute open flags — including a
+ * LIVE cross-invoice duplicate check, never a stored flag (D50) — and refuse (409) if any
+ * are open. A client-side disable is not enough, since the whole product is that the system
+ * won't vouch for unverified numbers; a stale persisted duplicate flag isn't enough either,
+ * for the same reason — it could wrongly allow trust once its match is gone-but-unrefreshed,
+ * or wrongly block it forever after the real duplicate was already resolved.
  */
 export async function POST(
   _req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  const row = await prisma.invoice.findUnique({
-    where: { id },
-    include: { lineItems: true },
-  });
-  if (!row) {
+  const scored = await getLiveScoredInvoice(id);
+  if (!scored) {
     return NextResponse.json({ error: "Invoice not found" }, { status: 404 });
   }
 
-  const view = toView(row as unknown as StoredInvoice);
-  if (!view.canTrust) {
+  if (!scored.overall.canTrust) {
     return NextResponse.json(
-      { error: `Cannot mark trusted: ${view.openFlags} open flag(s) must be resolved first` },
+      { error: `Cannot mark trusted: ${scored.overall.openFlags} open flag(s) must be resolved first` },
       { status: 409 },
     );
   }

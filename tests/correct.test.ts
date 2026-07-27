@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { applyCorrection, applyConfirmation } from "@/lib/correct";
+import { applyCorrection, applyConfirmation, revalidateDuplicate, getLiveScoredInvoice } from "@/lib/correct";
 import { prisma } from "@/lib/db";
 import { updateInvoiceScored } from "@/lib/store";
 import { findDuplicates, applyDuplicateResult } from "@/lib/duplicate";
@@ -150,5 +150,78 @@ describe("applyConfirmation — affirming a value without editing it (D48)", () 
 
     expect(scored!.fields.total.confidence).toBe(0.9);
     expect(scored!.fields.total.confirmed).toBeUndefined();
+  });
+});
+
+describe("revalidateDuplicate — re-check duplicates for an existing invoice, no field change (D49)", () => {
+  it("re-runs the duplicate check and persists, without touching any value or marking anything corrected/confirmed", async () => {
+    vi.mocked(prisma.invoice.findUnique).mockResolvedValue(baseRow() as never);
+
+    const scored = await revalidateDuplicate("inv1");
+
+    expect(scored!.fields.vendorName.value).toBe("Metro Office Supplies Pvt Ltd");
+    expect(scored!.fields.vendorName.corrected).toBeUndefined();
+    expect(scored!.fields.vendorName.confirmed).toBeUndefined();
+    expect(findDuplicates).toHaveBeenCalledWith(
+      {
+        gstin: null,
+        invoiceNo: null,
+        total: null,
+        invoiceDate: null,
+        vendorName: "Metro Office Supplies Pvt Ltd",
+        currency: null,
+      },
+      "inv1",
+    );
+    expect(applyDuplicateResult).toHaveBeenCalled();
+    expect(updateInvoiceScored).toHaveBeenCalled();
+  });
+
+  it("returns null when the invoice doesn't exist", async () => {
+    vi.mocked(prisma.invoice.findUnique).mockResolvedValue(null);
+
+    const scored = await revalidateDuplicate("missing");
+
+    expect(scored).toBeNull();
+  });
+});
+
+describe("getLiveScoredInvoice — read-only live duplicate check, nothing persisted (D50)", () => {
+  it("runs the live duplicate check and returns the scored result WITHOUT persisting anything", async () => {
+    vi.mocked(prisma.invoice.findUnique).mockResolvedValue(baseRow() as never);
+
+    const scored = await getLiveScoredInvoice("inv1");
+
+    expect(scored!.fields.vendorName.value).toBe("Metro Office Supplies Pvt Ltd");
+    expect(findDuplicates).toHaveBeenCalledWith(
+      {
+        gstin: null,
+        invoiceNo: null,
+        total: null,
+        invoiceDate: null,
+        vendorName: "Metro Office Supplies Pvt Ltd",
+        currency: null,
+      },
+      "inv1",
+    );
+    expect(applyDuplicateResult).toHaveBeenCalled();
+    expect(updateInvoiceScored).not.toHaveBeenCalled();
+  });
+
+  it("accepts an already-fetched row and skips a second DB fetch", async () => {
+    const row = baseRow();
+
+    const scored = await getLiveScoredInvoice("inv1", row as never);
+
+    expect(scored!.fields.vendorName.value).toBe("Metro Office Supplies Pvt Ltd");
+    expect(prisma.invoice.findUnique).not.toHaveBeenCalled();
+  });
+
+  it("returns null when the invoice doesn't exist", async () => {
+    vi.mocked(prisma.invoice.findUnique).mockResolvedValue(null);
+
+    const scored = await getLiveScoredInvoice("missing");
+
+    expect(scored).toBeNull();
   });
 });

@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
-import { applyCorrection } from "@/lib/correct";
+import { applyCorrection, revalidateDuplicate } from "@/lib/correct";
+import { prisma } from "@/lib/db";
+import { classifyDuplicateField, classifyAllDuplicates } from "@/lib/duplicate";
 
 export const runtime = "nodejs";
 
@@ -34,4 +36,46 @@ export async function PATCH(
   } catch (e) {
     return NextResponse.json({ error: String(e instanceof Error ? e.message : e) }, { status: 400 });
   }
+}
+
+/**
+ * Delete an invoice — but only while it currently has an open Tier-1 hard-duplicate flag
+ * (D48/D49). Not a general "delete any invoice" capability: a genuine hard duplicate has no
+ * other legitimate resolution (D17's rule failures can't be human-overridden, only fixed —
+ * and there's nothing to "fix" when both records are correct, just redundant), so removing
+ * the redundant record is the actual correct action, not a workaround. Server-enforced, the
+ * same way the trust gate is (D14): the condition is re-checked here, not just hidden in the
+ * UI — and, as of D50, checked LIVE (`classifyAllDuplicates`), not from a stored flag, so a
+ * stale flag can neither wrongly allow nor wrongly block a delete.
+ */
+export async function DELETE(
+  _req: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { id } = await params;
+  const row = await prisma.invoice.findUnique({ where: { id }, select: { id: true } });
+  if (!row) {
+    return NextResponse.json({ error: "Invoice not found" }, { status: 404 });
+  }
+
+  const duplicates = await classifyAllDuplicates();
+  if (duplicates.get(id) !== "hard") {
+    return NextResponse.json(
+      { error: "Can only delete an invoice that currently has an open hard-duplicate flag" },
+      { status: 409 },
+    );
+  }
+
+  await prisma.invoice.delete({ where: { id } });
+
+  // A stale "possible duplicate of THIS invoice" flag/warning on some other, still-existing
+  // row must not survive the match it was pointing at (D49) — re-check only the invoices
+  // that currently show a duplicate signal (small, already-flagged set), not every row.
+  const candidates = await prisma.invoice.findMany({ select: { id: true, invoiceNoField: true } });
+  const staleIds = candidates
+    .filter((c) => classifyDuplicateField(c.invoiceNoField) !== null)
+    .map((c) => c.id);
+  await Promise.all(staleIds.map((staleId) => revalidateDuplicate(staleId)));
+
+  return NextResponse.json({ id, deleted: true });
 }

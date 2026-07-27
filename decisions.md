@@ -2163,3 +2163,252 @@ them). Accepted because the alternative was either the mislabeling bug staying l
 flow instead of a separate action/marker; any UI for confirming a field that already has an
 open flag (a real correction is what that requires, not an affirmation).
 
+**Addendum — layout fix, same day:** first shipped with the "confirm" button and "confirmed"
+tag placed in the Value column, right after `EditableField`. On the actual two-column detail
+layout (document preview + fields table), that column is narrow enough that a wrapped
+multi-line value (e.g. a long vendor name) left no room on its last line for the tag/button,
+so it fell onto its own line below — and for line items specifically, there's no Confidence
+column at all, so "confirm" appeared under a value with no visible score for it to be
+changing anything to. Moved both into the Confidence cell instead, next to the badge they
+actually affect, and dropped the confirm affordance from line items entirely (nothing there
+displays a per-field confidence for it to attach to). `Confidence` now optionally takes
+`editInvoiceId`/`fieldKey` to render this; `Value` goes back to exactly its pre-D48 shape
+(just the editable value and the `corrected` "edited" tag). No test changes required — the
+existing row-scoped assertions (`within(vendorRow())...`) don't care which cell the button
+lives in.
+
+---
+
+## D49 — A scoped delete: only while an invoice has an open hard-duplicate flag
+
+**The decision:** a new `DELETE /api/invoices/:id` route, but not a general "delete any
+invoice" capability — it's server-enforced to only work while the invoice currently has an
+open Tier-1 hard-duplicate flag (checked via the same `classifyDuplicateField` the list page
+already uses for its badge). A "Delete this upload" button appears in the UI only next to
+that specific flag, with a two-step inline confirm (not a native `confirm()` dialog, since
+this is destructive and irreversible).
+
+**What prompted it:** walking through the actual user journey for D44's Tier-1 duplicate
+detection for the first time — not just "does it detect correctly" but "then what does the
+user do about it." Found a genuine stalemate: a Tier-1 flag floors confidence and blocks
+trust (by design, D44), Confirm (D48) explicitly refuses to touch a flagged field (by
+design, D17 — a failed verifiable check can't be human-overridden, only fixed), and editing
+doesn't help either when the data is already correct on both sides — there was nothing
+wrong to *fix*. Two invoices that are genuinely the same document had zero legitimate way to
+leave that state. That's a real product hole, not an edge case — accidental duplicate
+uploads (double-click, a file forwarded twice) are an ordinary occurrence, not a rare one.
+
+**Why delete is the right fix, not an override:** a Tier-1 match means the same GSTIN,
+invoice number, and total collide — under GST rules (D44's own reasoning), invoice numbers
+must be unique per GSTIN per financial year, so a real collision is either the same document
+twice or an actual compliance problem. Either way, there's no legitimate world where both
+records should stay and both get marked trusted — the correct action is removing the
+redundant one, the same way you'd never keep two "trusted" copies of one invoice in a real
+ledger. This isn't a workaround for the flag; it's the actual resolution the flag is asking
+for, expressed as a button instead of an out-of-band DB command.
+
+**Why scoped, not a general delete button:** this is a public, unauthenticated deploy (D18).
+A general "delete any invoice" capability is a materially bigger, scarier surface — anyone
+with the link could delete anyone's data, no confirmation of intent beyond a click. Gating
+delete server-side on "does this invoice currently have an open hard-duplicate flag" (the
+route re-checks this itself, not just the UI) keeps the blast radius to exactly the stalemate
+it exists to resolve — the same pattern as the trust gate (D14): the condition is enforced
+where it can't be bypassed by hitting the API directly, not just hidden behind a UI
+affordance.
+
+**The alternatives rejected:**
+- **A general delete-any-invoice button** — simpler to build, but a much bigger risk on a
+  public deploy for a capability that's only actually needed in one specific stalemate.
+- **A "not a duplicate, trust it anyway" override** — considered and rejected explicitly:
+  this is architecturally identical to letting a human confirm past a failed GSTIN checksum,
+  which is exactly the invariant (D17) the rest of the confidence model exists to protect.
+  Overriding a rule failure by assertion, rather than by fixing the underlying data (or, when
+  there's genuinely nothing to fix, removing the redundant record), was never on the table.
+- **Native `window.confirm()`** — rejected for the same reason it's avoided in browser
+  automation generally: it's a jarring, inconsistent-looking modal; a small inline two-step
+  confirm (button → "Yes, delete" / "Cancel" card) fits the app's existing plain-HTML,
+  low-JS aesthetic (same pattern as `EditableField`'s edit/save/cancel).
+
+**Tradeoffs accepted:** genuinely irreversible — no soft-delete, no undo, `LineItem` rows
+cascade-delete with it. Acceptable because it only ever applies to a redundant duplicate
+record in the first place, and the two-step confirm plus the explicit "cannot be undone"
+copy is the mitigation, not a safety net that changes the outcome.
+
+**What I deliberately cut:** a general delete-any-invoice feature; any "override, mark
+trusted anyway" path for a Tier-1 duplicate; a native browser confirm dialog.
+
+**Addendum — stale flags on the surviving invoice, same day:** after deleting one of a
+duplicate pair, the *other* invoice still showed "possible duplicate of invoice `<deleted
+id>`" — a real bug, not cosmetic staleness: once the actual duplicate is gone, that invoice
+genuinely isn't a duplicate of anything anymore, so the flag was now actively false. Root
+cause: duplicate detection only ever runs at write-time for whichever invoice is being
+written (upload, correct, confirm) — deleting a *different* row never touches it. Fixed by
+re-checking, right after a successful delete, every remaining invoice that currently shows
+any duplicate signal (`classifyDuplicateField`, the same check the list badge already uses)
+— a small, already-flagged set, not a full-table rescan — and re-persisting each through a
+new `revalidateDuplicate(id)` (`lib/correct.ts`): re-score, re-run `findDuplicates` excluding
+nothing changed but the DB state, re-persist. If its match was the deleted row, the flag
+clears; if it was also colliding with a third invoice, it correctly stays. Extracted the
+repeated "score → find duplicates → apply → persist" tail (previously duplicated between
+`applyCorrection` and `applyConfirmation`) into a shared `rescoreAndPersist` helper now that
+a third caller needed the exact same sequence — the DRY threshold this project has used
+consistently (D41 `useAsyncAction`, D44's `MONEY_TOL` export).
+
+---
+
+## D50 — Duplicate status is derived state, not persisted state
+
+**The decision:** the invoice detail page and the trust route (`POST /api/invoices/:id/trust`)
+no longer trust the stored duplicate flag at all — both now compute duplicate status LIVE,
+against the current invoices table, every time they're hit. A new `getLiveScoredInvoice(id,
+prefetchedRow?)` in `lib/correct.ts` is the single function both call: reconstruct → re-score
+→ `findDuplicates` (excluding self) → `applyDuplicateResult` — the exact same core logic
+every write path already used, just invoked read-only, with nothing persisted.
+
+**Why the reactive delete-time patch (D49's addendum) wasn't the real fix:** it treated the
+symptom (a stale flag exists after a delete) rather than the disease (duplicate status was
+being treated as persisted state at all, when it's actually derived — a fact about this
+invoice's relationship to whatever else currently exists in the table, not a fact about this
+invoice alone). A reactive patch only ever covers the specific trigger it was written for
+(delete); *editing* another invoice's GSTIN/invoiceNo/total, or any future write path (bulk
+import, say), would each need their own equivalent patch, an open-ended list. Not treating
+it as persisted removes the whole category, since there's nothing cached left to invalidate.
+
+**Why this matches D14's own precedent:** the trust gate (`canTrust`/`openFlags`) was already
+deliberately never persisted, always derived on read, for exactly this reason — a stored
+verdict can drift from the data it's supposed to summarize the moment that data changes
+elsewhere. Duplicate status is the same shape of problem; this just closes the one place D44
+didn't originally apply that principle.
+
+**What stays write-time-persisted, deliberately:** the list page's badge and the CSV/JSON
+export still read the stored flag (`classifyDuplicateField`), unchanged. Those are lower-
+stakes — a badge/export column, not something that gates an actual trust decision or is the
+single canonical thing shown on the record's own page — so the existing accepted asymmetry
+(D46: no retroactive scan) stays there. Making them live too is a reasonable future step
+(would need a single batch query + in-memory pairwise check for the list, since duplicate
+comparison is inherently cross-row) but wasn't asked for and adds no correctness risk by
+being deferred, unlike the two consumers that were fixed here.
+
+**Implementation:** `lib/correct.ts` was reorganized into a clear layering — `loadReconstructed`
+(fetch-or-reuse a row, rebuild it into raw fields + corrected/confirmed key sets, shared
+prologue for everything below), `rescore` (re-score + live duplicate check, no persist),
+`rescoreAndPersist` (`rescore` + `updateInvoiceScored`, used by every function that
+represents an actual write event), and `getLiveScoredInvoice` (`loadReconstructed` +
+`rescore`, no persist — the new read path). `applyCorrection`/`applyConfirmation`/
+`revalidateDuplicate` were rewritten on top of the same shared prologue rather than each
+repeating "fetch row → toView → reconstruct." The detail page and trust route no longer
+import `toView`/`StoredInvoice` for trust-gate purposes at all — they call
+`getLiveScoredInvoice` and read `.fields`/`.overall.canTrust`/`.overall.openFlags` directly.
+
+**Verified against the actual stale case:** re-ran `getLiveScoredInvoice` directly against
+the real Metro Office Supplies invoice that had been showing the stale "possible duplicate"
+flag throughout this session (its match was deleted before this fix existed) — live result:
+`flags: []`, `canTrust: true`, `openFlags: 0`. Confirms the fix without needing to touch the
+stored row at all (a pure read, no DB write).
+
+**Tradeoffs accepted:** the detail page now does the same duplicate-check DB round trip on
+every render that write paths already did on every write — trivial at this dataset size, no
+different in kind from what `revalidateDuplicate` already cost per delete.
+
+**What I deliberately cut, then un-cut the same day:** making the list-page badge live too —
+initially left as an accepted asymmetry, then reconsidered once the user pointed out the list
+page still showed a stale "duplicate" badge and pushed back: the app should be consistent
+about this, not fixed in two places and stale in a third for no principled reason. Extended
+`lib/duplicate.ts` with `classifyAllDuplicates()`: one query for every non-failed invoice's
+identity fields, then an in-memory pairwise classification (shares the exact tiering rule
+with `findDuplicates` via a new `matchTier` pure helper, so the two never drift). The list
+page now calls this once per render instead of reading a stored flag per row. Also extended
+the DELETE route's own authorization check (D49) the same way — it had the identical
+staleness risk (a stale flag could wrongly allow or block a delete) and was a one-line reuse
+of the same new function, so there was no reason to leave it as the odd one out.
+
+**What's still deliberately left on the old, persisted path:** CSV/JSON export. Unlike the
+list page (a live view, re-rendered on every visit) and the delete gate (a live authorization
+decision), an exported file is inherently a point-in-time snapshot — "stale" isn't quite the
+right frame for a document someone deliberately downloaded at a moment in time. Left as-is;
+revisit if that reasoning turns out to be wrong.
+
+**Net effect on the D49 delete-time revalidation patch:** now genuinely optional rather than
+load-bearing anywhere — detail page, trust route, list page, and the delete gate all compute
+live. It's kept solely to keep the *stored* flags/warnings text reasonably fresh for
+CSV/JSON export, the one remaining consumer of persisted duplicate state.
+
+---
+
+## D51 — Rebuilt the matching rule itself: fiscal-year bound, currency veto, no-GSTIN fallback
+
+**The decision:** D44's original matching rule (GSTIN + invoiceNo + total for hard; GSTIN +
+total + date-within-7-days for soft) was correctly *architected* by D50, but the rule itself
+had two real gaps, both caught live in this session, not hypothetically:
+
+1. **A genuine duplicate went undetected.** Two identical Northgate Electricals invoices
+   (same invoice number `NGE-0056`, same total, same date) were uploaded twice and never
+   flagged, because Gemini didn't extract a GSTIN from that particular document — and the
+   hard/soft rule required a GSTIN on both sides to run *at all*, with no fallback.
+2. **A false positive was structurally possible but unverified until reviewed.** D44's own
+   justification for treating GSTIN+invoiceNo+total as *hard, blocking* evidence explicitly
+   invokes GST law: invoice numbers must be unique *per GSTIN per financial year*. The
+   implementation never checked the year — an exact GSTIN+invoiceNo+total match a year
+   apart (a vendor legitimately reusing a number after the fiscal year rolled over, which
+   that same law explicitly permits) would have been wrongly, permanently blocked, with the
+   only "fix" being to delete one of two genuinely-valid invoices.
+
+Both were flagged in a from-scratch staff-engineer-style review of the whole project
+(requested explicitly, adversarial, not asked to be encouraging) before either had actually
+manifested as a live bug — #1 then manifested minutes later in the running app, which is
+what prompted fixing both together instead of filing them as future work.
+
+**The rebuilt rule, in `lib/duplicate.ts`:**
+- **Tier 1 (hard):** GSTIN + invoice number + total match, **and** either the invoice dates
+  are in the same GST financial year (April–March) or a date is missing on either side (if
+  we can't disprove same-year, stay conservative rather than silently let a real duplicate
+  through).
+- **Tier 1, cross-year (soft, new):** the identical match, but the dates are known and in
+  different financial years — can't block trust (GST law's own guarantee doesn't cover this
+  case), but still worth a human glance.
+- **Tier 2 (soft, unchanged):** GSTIN + total match, different invoice number, dates within 7
+  days — the altered-reference-resubmission pattern.
+- **Tier 3 / no-GSTIN fallback (soft, new):** GSTIN missing on at least one side — match on
+  an **exact** (not fuzzy) vendor name + invoice number + total instead. Weaker legal
+  grounding than GSTIN, so it's soft, never blocking — but without it, the exact scenario
+  that just happened (a real duplicate, GSTIN extraction failure) goes completely invisible.
+- **Currency veto (new), any tier:** if both sides have a known currency and it differs, no
+  match, regardless of what else lines up — a numerically-equal total in a different
+  currency is never the same transaction. Reuses the existing `normalizeCurrency` (D20)
+  rather than a second symbol-to-code table.
+- **Comparison normalization (new):** GSTIN, invoice number, and vendor name are all compared
+  case- and whitespace-insensitively — extraction can legitimately vary in case/spacing
+  across two reads of the same document, and the whole point of the no-GSTIN fallback is to
+  catch exactly that kind of near-identical-but-not-byte-identical repeat upload.
+
+**Why the no-GSTIN fallback is soft, not hard:** GSTIN uniqueness has actual legal backing
+(D44's cited GST rule); an exact vendor-name string match does not — two distinct legal
+entities could in principle share a display name. Giving it hard/blocking authority would
+overclaim certainty the evidence doesn't support, which is exactly the discipline the rest of
+the confidence model (D13) is built to enforce. It gets flagged, not force-blocked.
+
+**Shape change:** `DuplicateCheck`/`DuplicateMatch` now carry a `reason: MatchReason` per
+match (four reasons, one message each), not just an id — the flag/warning text a human reads
+needs to say *which* evidence fired, not just that something did. `findDuplicates` takes a
+single `identity` object (`gstin`, `invoiceNo`, `total`, `invoiceDate`, `vendorName`,
+`currency`) instead of four-then-five positional parameters — was already getting unwieldy,
+and the object is the same shape `classifyAllDuplicates`'s internal `InvoiceIdentity` needs,
+so there's one canonical "what identifies an invoice for matching purposes" type instead of
+two near-duplicates. `matchTier`, shared by both `findDuplicates` (one invoice vs. the DB)
+and `classifyAllDuplicates` (every invoice vs. every other, in memory, D50), is still the
+single place the actual rule lives — this rebuild extended that one function, not two
+parallel copies of it.
+
+**Verified against the real data that surfaced the gap:** re-ran `classifyAllDuplicates()`
+directly against the live DB — the two real Northgate Electricals rows (identical invoice
+number, total, date, no GSTIN extracted on either) now correctly classify as `soft`.
+
+**Tradeoffs accepted:** the no-GSTIN fallback still can't help if vendor name extraction
+*also* varies in some way normalization doesn't cover (a typo, an abbreviation) — genuinely
+weaker coverage than the GSTIN-anchored tiers, which is exactly why it's capped at soft.
+
+**What I deliberately cut:** fuzzy/similarity-based vendor name matching for the fallback
+tier (Levenshtein distance, etc.) — exact-after-normalization only, to keep the fallback's
+evidence basis simple and explainable, consistent with D44's original "no fuzzy vendor-name
+fallback" instinct — just no longer used as a reason to skip the check entirely.
+

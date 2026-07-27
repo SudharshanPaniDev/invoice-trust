@@ -95,6 +95,38 @@ describe("ScoredFields — flags", () => {
   });
 });
 
+describe("ScoredFields — delete a hard duplicate (D48/D49)", () => {
+  it("offers a delete option next to a hard-duplicate flag, in an editable context", () => {
+    const flag = "Possible duplicate of invoice INV-100 (same GSTIN, invoice number, and total)";
+    render(
+      <ScoredFields
+        fields={{ invoiceNo: mkField({ confidence: 0.3, flags: [flag] }) }}
+        editInvoiceId="inv1"
+      />,
+    );
+    const row = screen.getByText("Invoice No").closest("tr")!;
+    expect(within(row).getByRole("button", { name: /Delete this upload/ })).toBeInTheDocument();
+  });
+
+  it("does not offer delete outside an editable context", () => {
+    const flag = "Possible duplicate of invoice INV-100 (same GSTIN, invoice number, and total)";
+    render(<ScoredFields fields={{ invoiceNo: mkField({ confidence: 0.3, flags: [flag] }) }} />);
+    const row = screen.getByText("Invoice No").closest("tr")!;
+    expect(within(row).queryByRole("button", { name: /Delete this upload/ })).not.toBeInTheDocument();
+  });
+
+  it("does not offer delete for an unrelated flag (e.g. a checksum failure)", () => {
+    render(
+      <ScoredFields
+        fields={{ vendorGSTIN: mkField({ confidence: 0.3, flags: ["GSTIN checksum failed"] }) }}
+        editInvoiceId="inv1"
+      />,
+    );
+    const row = screen.getByText("GSTIN").closest("tr")!;
+    expect(within(row).queryByRole("button", { name: /Delete this upload/ })).not.toBeInTheDocument();
+  });
+});
+
 describe("ScoredFields — confirm (D48)", () => {
   it("offers confirm on an editable, unverified field with no value and no blocking flag", () => {
     render(

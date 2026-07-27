@@ -1,7 +1,15 @@
 import type { ScoredField } from "@/lib/validation/confidence";
 import { EditableField } from "../invoices/[id]/EditableField";
 import { ConfirmField } from "../invoices/[id]/ConfirmField";
+import { DeleteDuplicateButton } from "../invoices/[id]/DeleteDuplicateButton";
 import { Tooltip } from "./Tooltip";
+
+// Duplicated from `HARD_MATCH_PREFIX` in lib/duplicate.ts rather than imported — that module
+// pulls in the Prisma client, which can't be bundled into this component's client tree
+// (ScoredFields renders inside DetailInteractive, a "use client" component). Must stay in
+// sync with that constant; classifyDuplicateField in lib/duplicate.ts makes the same check
+// server-side for the actual delete authorization (D48/D49) — this one is UI-only.
+const HARD_DUPLICATE_FLAG_PREFIX = "Possible duplicate of invoice";
 
 const FIELDS: [string, string][] = [
   ["vendorName", "Vendor"],
@@ -39,18 +47,40 @@ function confidenceTitle(f: ScoredField): string {
   return "No rule can check this field — this is a damped model estimate, not a validated result.";
 }
 
-function Confidence({ f }: { f: ScoredField | undefined }) {
+/** `editInvoiceId`/`fieldKey` are only passed from the main fields table (D48) — line items
+ *  don't get a Confidence column at all, so there's nowhere to attach a confirm action for
+ *  them, and the confirmed tag/confirm button live here (not in `Value`) so they never have
+ *  to compete with a wrapped multi-line value for horizontal room in a narrow column. */
+function Confidence({
+  f,
+  editInvoiceId,
+  fieldKey,
+}: {
+  f: ScoredField | undefined;
+  editInvoiceId?: string;
+  fieldKey?: string;
+}) {
   if (!f) return <span className="text-muted">—</span>;
   const low = f.confidence < 0.5;
+  const canConfirm =
+    !!editInvoiceId && !!fieldKey && !f.verified && f.value != null && f.flags.length === 0;
   return (
-    <Tooltip content={confidenceTitle(f)}>
-      <span
-        className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-xs font-medium ${confColor(f.confidence)}`}
-      >
-        {low && <span aria-hidden="true">⚠</span>}
-        {Math.round(f.confidence * 100)}%{f.verified ? " ✓" : ""}
-      </span>
-    </Tooltip>
+    <span className="inline-flex flex-wrap items-center gap-1.5">
+      <Tooltip content={confidenceTitle(f)}>
+        <span
+          className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-xs font-medium ${confColor(f.confidence)}`}
+        >
+          {low && <span aria-hidden="true">⚠</span>}
+          {Math.round(f.confidence * 100)}%{f.verified ? " ✓" : ""}
+        </span>
+      </Tooltip>
+      {f.confirmed && (
+        <span className="rounded-full bg-border/40 px-1.5 py-0.5 text-[10px] font-medium text-muted">
+          confirmed
+        </span>
+      )}
+      {canConfirm && <ConfirmField invoiceId={editInvoiceId!} fieldKey={fieldKey!} />}
+    </span>
   );
 }
 
@@ -86,21 +116,11 @@ function Value({
       edited
     </span>
   ) : null;
-  const confirmed = f?.confirmed ? (
-    <span className="ml-1 rounded-full bg-border/40 px-1.5 py-0.5 text-[10px] font-medium text-muted">
-      confirmed
-    </span>
-  ) : null;
-  // Only offer "confirm" where there's actually something unresolved to affirm: a field
-  // with a value, no blocking flag, and not already rule-verified/corrected/confirmed.
-  const canConfirm = !!editInvoiceId && !f?.verified && f?.value != null && (f?.flags.length ?? 0) === 0;
   if (editInvoiceId) {
     return (
       <>
         <EditableField invoiceId={editInvoiceId} fieldKey={fieldKey} value={f?.value ?? null} />
         {corrected}
-        {confirmed}
-        {canConfirm && <ConfirmField invoiceId={editInvoiceId} fieldKey={fieldKey} />}
       </>
     );
   }
@@ -108,7 +128,6 @@ function Value({
     <span className="font-medium">
       {f?.value ?? "—"}
       {corrected}
-      {confirmed}
     </span>
   );
 }
@@ -162,9 +181,18 @@ export function ScoredFields({
                 <td className="py-1.5 pr-4">
                   <Value editInvoiceId={editInvoiceId} fieldKey={key} f={f} />
                 </td>
-                <td className="py-1.5 pr-4"><Confidence f={f} /></td>
+                <td className="py-1.5 pr-4">
+                  <Confidence f={f} editInvoiceId={editInvoiceId} fieldKey={key} />
+                </td>
                 <td className="py-1.5 text-xs">
-                  {f?.flags.map((flag, i) => <FlagDisclosure key={`f${i}`} flag={flag} />)}
+                  {f?.flags.map((flag, i) => (
+                    <div key={`f${i}`} className="flex flex-col items-start gap-1">
+                      <FlagDisclosure flag={flag} />
+                      {editInvoiceId && flag.startsWith(HARD_DUPLICATE_FLAG_PREFIX) && (
+                        <DeleteDuplicateButton invoiceId={editInvoiceId} />
+                      )}
+                    </div>
+                  ))}
                   {f?.warnings?.map((w, i) => <FlagDisclosure key={`w${i}`} flag={w} tone="warning" />)}
                 </td>
               </tr>
