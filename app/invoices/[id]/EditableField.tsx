@@ -42,7 +42,7 @@ export function EditableField({
         <span className="font-medium">{value ?? "—"}</span>
         <button
           onClick={() => { setDraft(value ?? ""); setEditing(true); }}
-          className="text-xs text-accent opacity-0 group-hover:opacity-100 hover:underline"
+          className="rounded-sm text-xs text-accent opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100 hover:underline focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
         >
           edit
         </button>

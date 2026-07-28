@@ -64,11 +64,20 @@ export default async function InvoicesPage({
       <p className="mt-1 text-sm text-muted">
         Search and filter everything that&apos;s been extracted so far.
       </p>
-      <p className="mt-2 rounded-lg border border-border bg-surface p-3 text-xs text-muted">
-        This list is a small curated set: the 3 seeded samples (clean / invalid GSTIN /
-        mismatch) plus test invoices from trying the app, including a duplicate pair
-        demonstrating duplicate detection in action.
-      </p>
+      <div className="mt-2 rounded-lg border border-border bg-surface p-3 text-xs text-muted">
+        <p>This list is a small curated set:</p>
+        <ul className="mt-1.5 list-disc space-y-1 pl-4">
+          <li>The 3 seeded samples (clean / invalid GSTIN / mismatch), tagged &quot;sample&quot;</li>
+          <li>Other invoices extracted while exercising the app end-to-end — including a
+            duplicate pair that shows the duplicate-detection and resolution flow live</li>
+        </ul>
+        <p className="mt-1.5">
+          Only the seeded samples keep a source document — a real uploaded invoice&apos;s
+          file is never stored, only its extracted data, which is why other rows have
+          nothing to tag. This is a public, unauthenticated demo with no access controls,
+          so no real document is ever retained.
+        </p>
+      </div>
 
       {/* Structured query (D4) — filters map to indexed columns (D9) */}
       <form
