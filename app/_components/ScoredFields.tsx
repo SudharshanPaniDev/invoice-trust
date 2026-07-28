@@ -83,9 +83,15 @@ function Confidence({
  *  text on click, natively keyboard- and touch-accessible (no JS, no tooltip-only text). */
 function FlagDisclosure({ flag }: { flag: string }) {
   return (
-    <details className="cursor-pointer">
-      <summary className="max-w-[220px] truncate text-danger marker:content-none [&::-webkit-details-marker]:hidden">
-        ⚠ {flag}
+    <details className="group cursor-pointer">
+      <summary className="flex items-center gap-1.5 text-danger marker:content-none [&::-webkit-details-marker]:hidden">
+        <span className="max-w-[180px] truncate">⚠ {flag}</span>
+        <span className="shrink-0 rounded-full bg-danger/10 px-1.5 py-0.5 text-[10px] font-medium text-danger underline group-open:hidden">
+          more
+        </span>
+        <span className="hidden shrink-0 rounded-full bg-danger/10 px-1.5 py-0.5 text-[10px] font-medium text-danger underline group-open:inline">
+          less
+        </span>
       </summary>
       <p className="mt-1 max-w-[260px] whitespace-normal text-danger">{flag}</p>
     </details>

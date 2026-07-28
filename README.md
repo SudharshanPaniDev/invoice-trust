@@ -34,6 +34,33 @@ tour of the system — stack, diagrams, API/data model, and a feature-flow walkt
   "possible duplicate," always blocking trust until a human deletes the redundant invoice
   or dismisses the pair as not-a-match
 
+## Screenshots
+
+**A flagged field, explained in plain English.** The GSTIN's checksum fails, so it's
+flagged with the exact reason — the invoice can't be marked trusted until a human resolves it.
+
+![An invoice detail page showing a failed GSTIN checksum flag](docs/images/flagged-field.png)
+
+**The same invoice uploaded twice, caught automatically.** No fuzzy guessing — an exact
+match on vendor, invoice number, and total blocks trust until a human says "same document"
+(deletes the extra copy) or "not a duplicate" (dismisses it, remembered permanently).
+
+![An invoice detail page showing a duplicate flag with resolve/dismiss buttons](docs/images/duplicate-detected.png)
+
+**Trust gate: blocked.** Three open flags (an arithmetic mismatch) — "Mark trusted" is
+disabled server-side, not just hidden in the UI.
+
+![An invoice with open flags and a disabled Mark trusted button](docs/images/trust-gate-blocked.png)
+
+**Trust gate: passed.** Every check verified, marked trusted.
+
+![An invoice with all checks passed and a Marked trusted confirmation](docs/images/trust-gate-trusted.png)
+
+**Search, filter, and export — never ambiguous about what's verified.** Every export
+carries each field's confidence with it, and defaults to trusted invoices only.
+
+![The invoices list with filters, duplicate badges, and export buttons](docs/images/invoices-list.png)
+
 ## Stack
 
 Next.js 16 (App Router, TS) · Postgres (Neon) + Prisma 7 (driver adapter) · Google Gemini
