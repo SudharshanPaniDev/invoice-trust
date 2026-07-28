@@ -2577,3 +2577,51 @@ decision to expose match confidence as distinct, differently-behaving user-facin
 turned out to be modeling the algorithm instead of the business, and needed reversing
 separately once actually challenged on it.
 
+## D54 — Added `docs/ARCHITECTURE.md` as a standing reviewer-facing document
+
+**The decision:** wrote a single comprehensive architecture document — tech stack, repo
+structure, system diagram, database design, API reference, one flow diagram per feature
+(upload, correction, confirmation, possible-duplicate resolution, trust evaluation,
+export, structured query), request lifecycle, component architecture, domain model,
+validation and duplicate pipelines, security, performance, testing strategy, a full ADR
+index (D0–D53), design principles, and a summary table. Built from the actual repo, not
+from `decisions.md`'s narrative — every fact cross-checked against real files/routes/
+schema rather than restated from memory.
+
+**Why now, and why a new document instead of extending `SCOPE.md`:** `decisions.md`
+answers *why*; `SCOPE.md` answers *what product resulted*. Neither answers *how a
+reviewer should read the codebase in twenty minutes* — repo layout, request flow, where
+each concern lives. That's a different question, for a different reader (someone
+evaluating the engineering, not the product), so it earns its own file rather than being
+folded into either existing doc.
+
+**Diagram style — the one real iteration:** the first draft used Mermaid
+`sequenceDiagram`s for each feature flow (actor columns, arrows, self-loops). Feedback
+from a live read was that the notation itself, not the content, was the obstacle — hard
+to follow even after a plain-language walkthrough. Converted all five feature-flow
+diagrams to plain top-to-bottom `flowchart TD`s with everyday-language node text (e.g.
+"Server checks live: does this match any other invoice already saved?" instead of a
+function name), verified one at a time before converting the rest. `Trust Evaluation` and
+`Structured Query` were already flowcharts and were left with their existing
+variable-style labels — simplifying them was offered, not requested.
+
+**Terminology:** "Duplicate Candidate" renamed to "Possible Duplicate" throughout this
+document only, after a plain question about what a "candidate" is when the domain is
+invoices — "candidate" reads like ML-pipeline jargon, not a term a finance reviewer would
+recognize. `decisions.md` (including D53's own title) and source-code comments still say
+"duplicate candidate" — the rename wasn't extended there, since `decisions.md` is a
+historical log of calls as they were actually made (D12), not something to retouch after
+the fact, and the source-level rename wasn't asked for.
+
+**What I deliberately cut:** no new diagram tooling, no generated-from-code diagram
+pipeline — Mermaid, hand-written, kept in sync manually like every other doc in this
+repo. No attempt to keep it perfectly current automatically; it is a snapshot, sourced
+against the same commit as this decision, and will drift the way any hand-maintained doc
+does if the code moves and the doc isn't revisited.
+
+**Honest self-assessment:** the known, still-open architectural gaps this project already
+carries (the `canTrust` divergence between `toView` and `scoreInvoice`, zero test coverage
+on page-level Server Components) are named explicitly inside the document itself (§14,
+§17) rather than smoothed over — consistent with this project's stated preference for an
+honest account over a tidy one.
+

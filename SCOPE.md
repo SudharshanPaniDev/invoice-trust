@@ -39,7 +39,9 @@ flagged field, see the whole invoice re-validate, and only then mark it trusted.
 - Let trust survive the boundary where data leaves the application — structured export
   carries confidence and flags with it, not just raw values (D42/D43).
 - Extend "confidence earned by validation" across invoices, not just within one — catch a
-  duplicate or resubmitted invoice the same way an arithmetic error is caught (D44).
+  duplicate or resubmitted invoice the same way an arithmetic error is caught (D44/D53).
+- Let a human affirm a field that no rule can verify without editing it, distinct from
+  actually correcting a value (D48).
 
 ## 3. Scope
 
@@ -55,8 +57,9 @@ flagged field, see the whole invoice re-validate, and only then mark it trusted.
   needs to upload a real invoice to try the product
 - Structured export (CSV and JSON) of extracted data, trusted-only by default with an
   explicit override, never omitting trust-state columns (D42/D43)
-- Cross-invoice duplicate detection — an exact-match blocking check and a softer,
-  non-blocking resubmission warning (D44)
+- Cross-invoice duplicate detection — one "possible duplicate" concept, always blocking
+  trust until a human deletes or dismisses it (D44/D51/D53)
+- Human confirmation of a field no rule can verify, without editing its value (D48)
 - Public, unauthenticated demo deployment
 
 **Out of scope**
@@ -75,8 +78,10 @@ flagged field, see the whole invoice re-validate, and only then mark it trusted.
   re-extraction, no bulk actions)
 - Blocking an upload for being a duplicate — stored and flagged, same as any other
   validation issue, never rejected (D44)
-- Fuzzy vendor-name matching or any fallback when GSTIN is unusable for duplicate
-  detection; scheduled/automatic export; provenance/bbox fields in exported data (D42/D44)
+- A silent, non-blocking duplicate tier — every possible-duplicate match blocks trust
+  uniformly until a human resolves it, no weaker-evidence exception (D53)
+- Fuzzy (approximate/typo-tolerant) vendor-name matching; scheduled/automatic export;
+  provenance/bbox fields in exported data (D42/D51)
 
 ## 4. Product Capabilities
 
@@ -91,6 +96,10 @@ fallback for fields no rule can check — never as the primary signal.
 
 **4.3 Human Correction** — The system shall let a user correct any extracted field's
 value and re-validate the entire invoice against that correction.
+
+**4.3a Human Confirmation** — For a field no rule can verify, the system shall let a user
+affirm its current value is correct without editing it, distinct from a correction and
+earning a lower confidence than a rule-verified or corrected field (D48).
 
 **4.4 Trust Gate** — The system shall allow an invoice to be marked "trusted" only when
 no verification flags remain open, enforced on the server, not just hidden in the UI.
@@ -109,10 +118,12 @@ flow with instead of a real document.
 as CSV or JSON, defaulting to trusted invoices only with an explicit override, always
 including each field's confidence and any flags/warnings.
 
-**4.9 Duplicate Detection** — The system shall check every uploaded or corrected invoice
-against existing invoices for an exact match (same vendor, invoice number, and total) and
-flag it as blocking; and for a same-vendor/total/near-date match with a different invoice
-number, surfaced as a non-blocking warning.
+**4.9 Duplicate Detection** — The system shall check, live, on every read (detail page,
+list page, export) whether an invoice matches another currently-stored invoice — by
+GSTIN+invoice-number+total within the same GST fiscal year, by GSTIN+total within 7 days,
+or by an exact vendor-name+invoice-number+total fallback when GSTIN is missing — and
+surface any live, undismissed match as a single "possible duplicate" that blocks trust
+until a human deletes the redundant invoice or dismisses the pair as not a match.
 
 ## 5. User Roles
 
@@ -169,6 +180,10 @@ public demo needs zero setup friction for a reviewer to try it.
   edited field.
 - A human correction shall count as verification for a field no rule can otherwise check;
   it shall not override a rule that can.
+- Resubmitting a field's existing, unchanged value shall not count as a correction.
+- The system shall let a user confirm (not edit) a field's value when no rule can verify
+  it and nothing else about the field is flagged; a confirmed field shall earn lower
+  confidence than a rule-verified or actually-corrected one.
 
 **7.4 Trust Gate**
 - The system shall reject a request to mark an invoice trusted if any field currently has
@@ -198,13 +213,17 @@ public demo needs zero setup friction for a reviewer to try it.
   scope — nothing exported shall ever be ambiguous about its trust state.
 
 **7.9 Duplicate Detection**
-- The system shall check a new or corrected invoice against existing invoices for an exact
-  match on vendor GSTIN, invoice number, and total (within a small tolerance).
-- An exact match shall floor the invoice number's confidence and block the trust gate, the
-  same mechanism as any other failed verification rule.
-- A same-vendor/total match within 7 days but a different invoice number shall be
-  surfaced as a non-blocking warning — visible, but never floors confidence or blocks trust.
-- Neither tier shall block the upload itself.
+- The system shall compute duplicate status live, on every read — never store it — so it
+  always reflects the current set of invoices.
+- A match on GSTIN+invoice-number+total within the same GST fiscal year, on
+  GSTIN+total within 7 days, or on vendor-name+invoice-number+total when GSTIN is missing,
+  shall surface as one "possible duplicate," flooring confidence and blocking the trust
+  gate, the same mechanism as any other failed verification rule.
+- Every possible duplicate shall offer exactly two resolutions: delete the redundant
+  invoice ("same document"), or dismiss the pair ("not a duplicate") — the latter recorded
+  permanently so the same pair never resurfaces.
+- A dismissed pair shall not block trust again unless a new, different match is found.
+- Duplicate detection shall never block the upload itself.
 
 ## 8. Business Rules
 
@@ -222,8 +241,11 @@ public demo needs zero setup friction for a reviewer to try it.
 - Export defaults to trusted invoices only and always includes trust-state columns,
   regardless of scope — nothing exported is ever ambiguous about whether it was verified
   (D42/D43).
-- A duplicate match either blocks trust (exact match) or surfaces as a non-blocking
-  warning (softer, date-proximity match) — it never blocks the upload itself (D44).
+- A duplicate match always blocks trust uniformly, however it was found — no
+  weaker-evidence exception — until a human deletes or dismisses it; it never blocks the
+  upload itself (D44/D53).
+- Duplicate status is derived fresh on every read, never persisted — the only persisted
+  fact is a human's dismissal of a specific pair, which cannot be recomputed (D50/D52/D53).
 
 ## 9. Non-Functional Requirements
 
@@ -274,7 +296,8 @@ with its scope (Section 5) — this is a stated position, not a gap being overlo
 | Provenance (curated samples) | ✅ |
 | Sample invoice sandbox | ✅ |
 | Structured export (CSV/JSON, trusted-default) | ✅ |
-| Cross-invoice duplicate detection (two tiers) | ✅ |
+| Cross-invoice duplicate detection (single tier, derived, resolvable) | ✅ |
+| Human confirmation of unverifiable fields | ✅ |
 | Authentication / roles | ❌ (out of scope, D1/D18) |
 | Multiple document types | ❌ (out of scope, D3) |
 | Full-text/semantic search | ❌ (out of scope, D3/D6) |

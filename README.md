@@ -10,8 +10,10 @@ of the sample documents on the landing page instead (see below).
 ![Upload page with the download-sample-invoices section](docs/images/screenshot.png)
 
 Zamp Engineering Project · Problem #3. See [`SCOPE.md`](SCOPE.md) for what this does and
-doesn't do, and [`decisions.md`](decisions.md) for the reasoning behind every call made
-getting here. [`docs/plan.md`](docs/plan.md) has the original plan.
+doesn't do, [`decisions.md`](decisions.md) for the reasoning behind every call made
+getting here, and [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for a reviewer-facing
+tour of the system — stack, diagrams, API/data model, and a feature-flow walkthrough.
+[`docs/plan.md`](docs/plan.md) has the original plan.
 
 ## What it does
 
@@ -27,9 +29,10 @@ getting here. [`docs/plan.md`](docs/plan.md) has the original plan.
   real document to try it
 - Exports the filtered invoice list as CSV or JSON — trusted invoices only by default, with
   an explicit override, always including confidence/flags so nothing leaves ambiguous
-- Flags cross-invoice duplicates — an exact vendor+invoice-number+total match blocks trust;
-  a same-vendor/total match within 7 days but a different invoice number surfaces as a
-  non-blocking warning instead
+- Flags cross-invoice duplicates — GSTIN+invoice-number+total (fiscal-year bound), a
+  date-proximity match, or a vendor-name fallback when GSTIN is missing all surface as one
+  "possible duplicate," always blocking trust until a human deletes the redundant invoice
+  or dismisses the pair as not-a-match
 
 ## Stack
 
@@ -105,9 +108,9 @@ script is build-time-only tooling, not something you need to run to use the app.
   — an explicitly named gap, not something silently overlooked (`decisions.md` D22).
 - Neon's free-tier compute auto-suspends after idle; a keep-warm ping reduces but doesn't
   guarantee-eliminate an occasional cold-start delay (`decisions.md` D31).
-- Duplicate detection matches on exact vendor GSTIN + invoice number/total only — no fuzzy
-  vendor-name fallback, and it skips entirely when GSTIN is missing or already invalid
-  (`decisions.md` D44).
+- Duplicate detection is exact-field matching (GSTIN, invoice number, total, date), not
+  fuzzy — the vendor-name fallback used when GSTIN is missing still requires an exact
+  vendor-name/invoice-number/total match (`decisions.md` D51/D53).
 
 ## Project context
 
