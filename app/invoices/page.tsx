@@ -66,8 +66,8 @@ export default async function InvoicesPage({
       </p>
       <p className="mt-2 rounded-lg border border-border bg-surface p-3 text-xs text-muted">
         This list is a small curated set: the 3 seeded samples (clean / invalid GSTIN /
-        mismatch) plus a deliberate duplicate pair (Metro Office Supplies) demonstrating
-        duplicate detection in action.
+        mismatch) plus test invoices from trying the app, including a duplicate pair
+        demonstrating duplicate detection in action.
       </p>
 
       {/* Structured query (D4) — filters map to indexed columns (D9) */}
