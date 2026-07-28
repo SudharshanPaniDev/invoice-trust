@@ -2751,3 +2751,32 @@ timeout rather than surfacing why the wait condition was wrong — consistent wi
 choice to keep using the raw `playwright` library and this project's own manual
 check/report pattern.
 
+## D59 — Added README screenshots for non-technical reviewers; fixed a real discoverability gap they surfaced
+
+**The decision:** added 5 screenshots to `README.md` beyond the original single upload-page
+image — a flagged GSTIN field, a live duplicate-detection resolution, the trust gate both
+blocked and passed, and the invoices list with filters/export — each captioned in plain
+language, so someone evaluating this project without reading code or running it locally
+can still follow the core story (earned confidence, duplicate detection, the trust gate).
+
+**A real bug the screenshots caught:** capturing the flagged-field screenshot made it
+obvious that the truncated flag text (`FlagDisclosure`, e.g. "⚠ GSTIN checksum failed
+(exp…") has an invisible expand affordance. The native `<details>` marker was explicitly
+hidden for layout (`marker:content-none`), which removed the one built-in visual cue that
+the truncated text is clickable — nothing else signaled it. First fix attempt (a small
+chevron icon that rotates open) was tried and rejected after a live look — a bare glyph
+still isn't self-evidently "click me" to a non-technical viewer. Replaced with an explicit,
+underlined "more"/"less" text label instead, which needs no icon literacy to understand.
+
+**Why this belongs in the same decision as the screenshots:** the screenshots weren't just
+documentation — taking them (specifically, looking closely at what a first-time viewer
+would actually see) is what surfaced a real product gap that code review alone hadn't
+caught, the same role `check-provenance.ts` (D25) and `check-flows.ts` (D58) have played
+elsewhere in this project: a concrete, honest check finding something real, not a
+hypothetical additions.
+
+**What I deliberately didn't do:** did not add a fully custom tooltip/icon system for flag
+disclosure — kept the native `<details>/<summary>` element (still real keyboard/screen
+reader semantics) and changed only the visible label, the smallest change that fixes the
+actual gap.
+

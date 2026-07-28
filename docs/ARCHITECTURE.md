@@ -675,6 +675,7 @@ Full reasoning, alternatives considered, and what was cut for every entry lives 
 | D56 | Rejected a third-party uptime monitor; documented the Neon cold start instead |
 | D57 | Extended Playwright for e2e scenarios instead of introducing Cypress |
 | D58 | Built the Playwright e2e harness (`pnpm e2e`); it caught two real test bugs |
+| D59 | Added README screenshots; fixed a real flag-disclosure discoverability gap |
 
 *(D40 does not appear — an LCP/font-preload investigation was started, then deliberately
 removed once deferred indefinitely; the log records what's real, not a renumbered sequence.)*
