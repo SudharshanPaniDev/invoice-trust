@@ -43,11 +43,14 @@ type RawParams = Record<string, string | string[] | undefined>;
 const str = (v: string | string[] | undefined): string | undefined =>
   Array.isArray(v) ? v[0] : v;
 
+// Only ever used for minTotal/maxTotal — an invoice total is never negative, so a negative
+// value here is meaningless input, not a real filter (matches the `min="0"` on the form
+// field; this covers a hand-edited URL, which bypasses that HTML constraint entirely).
 const num = (v: string | string[] | undefined): number | undefined => {
   const s = str(v);
   if (s == null || s.trim() === "") return undefined;
   const n = Number(s);
-  return Number.isFinite(n) ? n : undefined;
+  return Number.isFinite(n) && n >= 0 ? n : undefined;
 };
 
 const date = (v: string | string[] | undefined): Date | undefined => {

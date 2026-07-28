@@ -100,11 +100,11 @@ export default async function InvoicesPage({
           </label>
           <label className="flex flex-col text-xs text-muted">
             Min total
-            <input name="minTotal" type="number" step="0.01" defaultValue={first(params.minTotal)} className={inputCls} />
+            <input name="minTotal" type="number" step="0.01" min="0" defaultValue={first(params.minTotal)} className={inputCls} />
           </label>
           <label className="flex flex-col text-xs text-muted">
             Max total
-            <input name="maxTotal" type="number" step="0.01" defaultValue={first(params.maxTotal)} className={inputCls} />
+            <input name="maxTotal" type="number" step="0.01" min="0" defaultValue={first(params.maxTotal)} className={inputCls} />
           </label>
           <label className="flex flex-col text-xs text-muted">
             From

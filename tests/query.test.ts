@@ -52,4 +52,10 @@ describe("parseFilter", () => {
     expect(f.from).toBeInstanceOf(Date);
     expect(f.to).toBeUndefined();
   });
+
+  it("drops a negative minTotal/maxTotal — an invoice total is never negative", () => {
+    const f = parseFilter({ minTotal: "-50", maxTotal: "-1" });
+    expect(f.minTotal).toBeUndefined();
+    expect(f.maxTotal).toBeUndefined();
+  });
 });
