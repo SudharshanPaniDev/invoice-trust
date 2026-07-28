@@ -101,8 +101,11 @@ export function DocumentViewer({
   return (
     <div className="relative inline-block">
       {status === "loading" && (
+        // Matches a rendered page's real proportions (US Letter, 8.5:11) so the real
+        // canvas swapping in doesn't reflow the layout (it did before this reserved the
+        // wrong shape entirely — a fixed 459x256 box against an actual ~402x520 canvas).
         <div
-          className="h-64 w-[459px] max-w-full animate-pulse rounded-lg border border-border bg-surface"
+          className="aspect-[8.5/11] w-full max-w-[459px] animate-pulse rounded-lg border border-border bg-surface"
           aria-busy="true"
           aria-label="Loading document"
         />
