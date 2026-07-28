@@ -557,6 +557,21 @@ every one of them itself (D14), so hitting the endpoint directly can't bypass an
 - **Provenance overlay positioning is percentage-based, not pixel-based** (D25) — tracks
   whatever size the PDF canvas actually renders at with zero resize-tracking code, for free
   from the browser's own layout engine.
+- **The three independent DB reads on `/invoices`** (invoice list, trusted count, live
+  duplicate classification) run under a single `Promise.all` rather than sequentially
+  (D55) — removes a self-inflicted 3x multiplier on round-trip latency; it does not touch
+  the cold-start cost below, which is a separate, infrastructure-level factor.
+
+**Development deployment note.** The live demo runs on Neon's free tier, whose compute
+automatically suspends after a period of inactivity. The first request after a suspension
+can take an extra ~0.8–1.2s while the database resumes. This is a property of the hosting
+tier, not the application's architecture — a production deployment would use an always-on
+database tier (or equivalent), which removes it entirely. An earlier attempt at masking
+this with a scheduled keep-warm ping (`.github/workflows/keep-warm.yml`, D31) turned out
+not to fire reliably enough to matter (GitHub deprioritizes cron on low-traffic repos), and
+patching that with a third-party uptime-monitor dependency was considered and deliberately
+rejected: it would make the architecture depend on a workaround for a free hosting plan
+rather than actually being faster, so it's stated here instead (D56).
 
 ---
 
@@ -649,6 +664,9 @@ Full reasoning, alternatives considered, and what was cut for every entry lives 
 | D51 | Rebuilt the matching rule: fiscal-year bound, currency veto, no-GSTIN fallback |
 | D52 | Finished the derive-not-persist migration — export and the last stored-flag consumer |
 | D53 | Collapsed hard/soft duplicate tiers into one concept: a Possible Duplicate |
+| D54 | Added `docs/ARCHITECTURE.md` as a standing reviewer-facing document |
+| D55 | Parallelized the three independent DB reads on `/invoices` |
+| D56 | Rejected a third-party uptime monitor; documented the Neon cold start instead |
 
 *(D40 does not appear — an LCP/font-preload investigation was started, then deliberately
 removed once deferred indefinitely; the log records what's real, not a renumbered sequence.)*

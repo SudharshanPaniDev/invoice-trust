@@ -38,7 +38,8 @@ tour of the system — stack, diagrams, API/data model, and a feature-flow walkt
 
 Next.js 16 (App Router, TS) · Postgres (Neon) + Prisma 7 (driver adapter) · Google Gemini
 (vision extraction, free tier) · Zod · Vitest + Playwright · Tailwind v4. Deploy: Vercel +
-Neon, GitHub Actions (keeps the Neon compute warm — see `decisions.md` D31).
+Neon, GitHub Actions (attempts to keep Neon compute warm — see `decisions.md` D31/D56 for
+why this doesn't fully work on a low-traffic repo).
 
 ## One-shot setup
 
@@ -106,8 +107,11 @@ script is build-time-only tooling, not something you need to run to use the app.
   on a real upload, since real uploads are never persisted (`decisions.md` D21).
 - The *extracted structured fields* from real uploads are stored in plaintext, unencrypted
   — an explicitly named gap, not something silently overlooked (`decisions.md` D22).
-- Neon's free-tier compute auto-suspends after idle; a keep-warm ping reduces but doesn't
-  guarantee-eliminate an occasional cold-start delay (`decisions.md` D31).
+- Neon's free-tier compute auto-suspends after idle; the first request after a suspension
+  can take an extra ~0.8–1.2s. A scheduled keep-warm ping exists but doesn't fire reliably
+  enough on a low-traffic repo to prevent this — a hosting-tier limitation, deliberately
+  left as a stated limitation rather than patched with a third-party uptime-monitor
+  dependency (`decisions.md` D31/D56).
 - Duplicate detection is exact-field matching (GSTIN, invoice number, total, date), not
   fuzzy — the vendor-name fallback used when GSTIN is missing still requires an exact
   vendor-name/invoice-number/total match (`decisions.md` D51/D53).

@@ -2645,3 +2645,32 @@ needs a keep-warm mechanism that actually fires on schedule (an external uptime 
 or accepting it as a stated limitation, a call left to the project owner rather than made
 unilaterally alongside an unrelated perf fix.
 
+## D56 — Rejected a third-party uptime monitor to patch the keep-warm gap; documented the cold start instead
+
+**The decision:** given D55's finding that the GitHub Actions keep-warm ping (D31) doesn't
+fire reliably enough on a low-traffic repo to actually prevent Neon's compute from
+suspending, the fix on the table was to add an external uptime-monitor service (UptimeRobot,
+cron-job.org, etc.) hitting `/api/health` on a real schedule. Declined. Instead, the
+cold-start cost is now stated plainly in `docs/ARCHITECTURE.md` §16 and `README.md`'s known
+limitations, as a property of the free hosting tier.
+
+**Why:** this is a portfolio submission, not a production SaaS. The cold start is a
+limitation of Neon's free compute tier, not of this application's architecture — nothing
+about the code is slow; a real database connection is. Bolting on a third-party monitoring
+dependency to mask a free-tier characteristic doesn't make the architecture faster or
+better, it just makes it depend on a workaround for a hosting constraint that a real
+production deployment (an always-on DB tier) would never have in the first place. An
+honest note that names the actual cause and the actual production fix is more informative
+to a reviewer than a patched-over demo that quietly hides which parts of the latency are
+"the app" versus "the free tier."
+
+**What I deliberately cut:** any keep-alive mechanism beyond what already exists. The
+existing `keep-warm.yml` workflow is left in place (it does still fire *sometimes*, so it's
+not pure dead weight, and removing it doesn't remove the underlying cost either) — but it's
+no longer described anywhere as something that reliably solves the problem.
+
+**Honest self-assessment:** this is the same honesty-over-polish call already made for
+D21/D22 (real uploads never persisted, extracted fields stored unencrypted) — naming a real
+gap plainly rather than shipping a workaround that would make the demo look faster than the
+architecture actually is on the hosting tier it's deployed on.
+
