@@ -2625,3 +2625,23 @@ on page-level Server Components) are named explicitly inside the document itself
 §17) rather than smoothed over — consistent with this project's stated preference for an
 honest account over a tidy one.
 
+## D55 — Parallelized the three independent DB reads on `/invoices`
+
+**The decision:** `app/invoices/page.tsx` fetched `invoices`, `trustedCount`, and
+`duplicates` (`classifyAllDuplicates()`) with three sequential `await`s. None of the three
+depends on either of the other two, so they now run under a single `Promise.all`.
+
+**Why it matters for LCP specifically:** on the free-tier Neon instance, the keep-warm
+mitigation (D31) doesn't actually fire reliably (GitHub Actions deprioritizes scheduled
+cron on low-traffic repos — real gaps of 1–3 hours observed), so a cold compute wake-up
+tax is common, not rare. This page has no `Suspense` boundary around the table — the real
+LCP element is the invoice table itself — so three sequential round-trips on a cold
+connection stacked directly onto time-to-LCP. Running them concurrently doesn't remove the
+cold-start tax (that's a separate, still-open problem — see the note left in `decisions.md`
+D31 and `SCOPE.md`), but it stops multiplying it by three.
+
+**What I deliberately didn't do:** did not touch the cold-start problem itself here — that
+needs a keep-warm mechanism that actually fires on schedule (an external uptime monitor)
+or accepting it as a stated limitation, a call left to the project owner rather than made
+unilaterally alongside an unrelated perf fix.
+

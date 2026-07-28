@@ -25,22 +25,25 @@ export default async function InvoicesPage({
   const where = buildInvoiceWhere(filter);
   const hasFilters = Object.keys(where).length > 0;
 
-  const invoices = await prisma.invoice.findMany({
-    where,
-    orderBy: { createdAt: "desc" },
-    select: {
-      id: true,
-      vendorName: true,
-      total: true,
-      invoiceDate: true,
-      status: true,
-      fileData: true,
-    },
-  });
-  const trustedCount = await prisma.invoice.count({ where: { ...where, status: "trusted" } });
-  // Live, not persisted (D50) — one query classifying every current invoice at once, so
-  // this badge can never go stale the way a stored flag could (e.g. after a delete).
-  const duplicates = await classifyAllDuplicates();
+  // Independent queries — run concurrently instead of paying three sequential round-trips.
+  const [invoices, trustedCount, duplicates] = await Promise.all([
+    prisma.invoice.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        vendorName: true,
+        total: true,
+        invoiceDate: true,
+        status: true,
+        fileData: true,
+      },
+    }),
+    prisma.invoice.count({ where: { ...where, status: "trusted" } }),
+    // Live, not persisted (D50) — one query classifying every current invoice at once, so
+    // this badge can never go stale the way a stored flag could (e.g. after a delete).
+    classifyAllDuplicates(),
+  ]);
 
   const inputCls = "rounded-md border border-border bg-background px-2 py-1 text-sm";
   // Hidden inputs so /api/invoices/export sees exactly the filters currently applied here.
