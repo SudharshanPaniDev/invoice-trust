@@ -2674,3 +2674,80 @@ D21/D22 (real uploads never persisted, extracted fields stored unencrypted) — 
 gap plainly rather than shipping a workaround that would make the demo look faster than the
 architecture actually is on the hosting tier it's deployed on.
 
+## D57 — Extended Playwright for e2e scenarios instead of introducing Cypress
+
+**The decision:** Playwright is already a dependency, already driving two real ad-hoc
+checks against the running app (`scripts/check-accessibility.ts` for axe-core WCAG scans,
+`scripts/check-provenance.ts` for the D25 overlay-position regression guard). Rather than
+add Cypress as a second, separate e2e framework, new end-to-end scenarios (upload →
+correction → confirmation → trust gate → duplicate resolution → export → search) are
+built as more Playwright-driven scripts, following the exact pattern already established:
+raw `playwright` (not the `@playwright/test` runner — this project never adopted that,
+just the library), requires `pnpm dev` running against a locally-seeded DB, writes a
+markdown report to `docs/`, non-zero exit on failure, explicitly not CI-safe (same status
+as `pnpm eval`, the live-Gemini harness).
+
+**Why not Cypress:** no real capability gap justifies a second e2e tool here. Cypress's
+actual advantages over Playwright today are mostly historical/ecosystem inertia — a bigger
+existing install base from teams with years of legacy suites, and a nicer interactive
+time-travel debugger for a human watching a test fail (though Playwright's trace viewer
+covers most of that now). Neither reason applies to a fresh solo project with zero legacy
+Cypress tests: Playwright already has real multi-tab/multi-browser support, built-in
+trace/video/screenshot-on-failure, and — concretely, for this repo — is already wired up
+and already proven against these exact pages. Adding Cypress here would mean maintaining
+two browser-automation stacks for one project, for no capability this one doesn't already
+have.
+
+**What I deliberately didn't do:** did not adopt the `@playwright/test` test-runner
+package either, even though it's the more common way people use Playwright (test files,
+`describe`/`test` blocks, HTML reporter, parallel workers). Matching the existing
+convention here specifically — one script per check, run manually, report written to
+`docs/` — was judged more valuable than switching to a "more standard" pattern mid-project,
+since it's already the second time this exact style has been used successfully (a11y,
+provenance) and introducing a second Playwright-usage pattern alongside it would be its own
+kind of inconsistency.
+
+## D58 — Built the Playwright e2e harness (`pnpm e2e`); it immediately caught two real test bugs
+
+**The decision:** added `scripts/check-flows.ts`, covering confirm → correct → trust,
+both duplicate resolutions (dismiss and delete), export, and search/filter. Every invoice
+it touches is created directly (bypassing Gemini — same technique the seed script uses,
+scoring a hand-built `RawInvoice` and calling `storeInvoice`), never the official seeded
+demo samples, and every row it creates is deleted again in a `finally` block regardless of
+pass/fail — so a script whose whole purpose is testing the app can never itself become the
+next stale-test-data incident (D46, and the Greenleaf cleanup earlier this session).
+
+**Two real bugs the harness caught in itself, not the app, both the same root cause:**
+waiting on unscoped text that could already be satisfied by something other than the actual
+state change being tested.
+
+1. `page.waitForSelector("text=confirmed")`, page-wide, resolved instantly — not because
+   the confirm action had completed, but because the page's own static help text
+   ("...or 85% (human-confirmed)...") already contained the substring "confirmed"
+   unconditionally, on every page load. The check then read the field's row before the real
+   update had landed and failed. Fixed by scoping the wait to the field's own row
+   (`vendorRow.getByText("confirmed", { exact: true })`), which can't be satisfied by
+   anything outside that row.
+2. Waiting for the "Not a duplicate" button to detach resolved the instant the button's own
+   label flipped to "…" mid-request (`DuplicateResolution.tsx`'s loading state) — Playwright
+   correctly reports zero elements matching `role=button[name="Not a duplicate"]` once the
+   label changes, so a wait for "detached" is satisfied by the loading state, not the actual
+   post-refresh result. Fixed by waiting on the flag text itself (`"Possible duplicate"`),
+   which doesn't change during the loading interval and only disappears once the dismissal
+   actually lands.
+
+**Why this is worth recording rather than just quietly fixing:** the general lesson —
+"wait for the specific thing you're asserting, scoped to where it can only mean what you
+think it means" — isn't obvious from the first failure. Both times the check *looked*
+correct and passed the type checker, and both times it was asserting against a false
+positive dressed as a real result, exactly the kind of bug a flaky-but-green test suite
+hides. `check-provenance.ts` (D25) already established the discipline of computing an
+independent expected value rather than trusting what the component itself claims; this is
+the same discipline applied to *timing* instead of *geometry*.
+
+**What I deliberately didn't do:** did not add `@playwright/test`'s `expect(locator).toHaveText(...)`-style
+auto-retrying assertions, which would have absorbed both bugs silently by polling until
+timeout rather than surfacing why the wait condition was wrong — consistent with D57's
+choice to keep using the raw `playwright` library and this project's own manual
+check/report pattern.
+

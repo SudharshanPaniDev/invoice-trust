@@ -595,12 +595,18 @@ rather than actually being faster, so it's stated here instead (D56).
 - `pnpm a11y` — Playwright accessibility pass (D39).
 - `pnpm check:provenance` — Playwright geometry check that the highlight overlay actually
   lands where it claims to (the exact bug class D25 fixed).
+- `pnpm e2e` — Playwright end-to-end (D57/D58): confirm → correct → trust, both duplicate
+  resolutions, export, and search/filter, driven against the real running app. Every
+  invoice it touches is created and torn down by the script itself (never the seeded demo
+  samples), so it can't leave stray rows in the shared database.
 
-**Known, explicitly-acknowledged gap:** the three page-level Server Components
-(`app/page.tsx`, `app/invoices/page.tsx`, `app/invoices/[id]/page.tsx`) have **zero**
-automated test coverage, despite now containing real orchestration logic (live duplicate
-overlay wiring, batch classification). Verified manually throughout development, not by a
-repeatable test — the single largest testing gap in the repo.
+**Known, partially-narrowed gap:** the three page-level Server Components
+(`app/page.tsx`, `app/invoices/page.tsx`, `app/invoices/[id]/page.tsx`) still have **zero**
+Vitest coverage, despite containing real orchestration logic (live duplicate overlay
+wiring, batch classification). `pnpm e2e` now exercises the actual request/render path
+through all three via a real browser, which is real coverage of the flows they
+orchestrate — but it's a manual, dev-only script, not something CI runs, so this remains
+the largest *automated, CI-enforced* testing gap in the repo.
 
 ---
 
@@ -667,6 +673,8 @@ Full reasoning, alternatives considered, and what was cut for every entry lives 
 | D54 | Added `docs/ARCHITECTURE.md` as a standing reviewer-facing document |
 | D55 | Parallelized the three independent DB reads on `/invoices` |
 | D56 | Rejected a third-party uptime monitor; documented the Neon cold start instead |
+| D57 | Extended Playwright for e2e scenarios instead of introducing Cypress |
+| D58 | Built the Playwright e2e harness (`pnpm e2e`); it caught two real test bugs |
 
 *(D40 does not appear — an LCP/font-preload investigation was started, then deliberately
 removed once deferred indefinitely; the log records what's real, not a renumbered sequence.)*
