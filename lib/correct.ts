@@ -2,8 +2,7 @@ import { prisma } from "./db";
 import { toView, type StoredInvoice } from "./invoice-view";
 import { scoreInvoice, type ScoredInvoice, type ScoredField } from "./validation/confidence";
 import { updateInvoiceScored } from "./store";
-import { findDuplicates, applyDuplicateResult } from "./duplicate";
-import { parseAmount, parseDate } from "./validation/parse";
+import { overlayLiveDuplicateStatus } from "./duplicate";
 import type { RawInvoice, RawField, RawLineItem } from "./schema";
 
 const INVOICE_KEYS = [
@@ -115,45 +114,32 @@ async function loadReconstructed(
   return reconstruct(toView(row));
 }
 
-/** Re-score against the (possibly edited) raw fields and re-check cross-invoice duplicates
- *  (D49/D50) — but don't persist. Duplicate status is derived state: it's a fact about this
- *  invoice's relationship to whatever else currently exists in the table, not a fact about
- *  this invoice alone, so it's always recomputed fresh here rather than trusted from a
- *  stored flag that can drift the moment some OTHER invoice changes or is deleted. */
-async function rescore(
-  id: string,
+/** Pure, single-invoice scoring — no cross-invoice check, no DB call. This is what gets
+ *  persisted on every write (D52): duplicate status is never part of it, because it's a
+ *  fact about this invoice's relationship to whatever else currently exists in the table,
+ *  never a fact about this invoice alone, so it has no business being stored as if it were. */
+function rescore(
   raw: RawInvoice,
   correctedKeys: Set<string>,
   confirmedKeys: Set<string>,
-): Promise<ScoredInvoice> {
-  const scored = scoreInvoice(raw, correctedKeys, confirmedKeys);
-
-  const dup = await findDuplicates(
-    {
-      gstin: scored.fields.vendorGSTIN?.value ?? null,
-      invoiceNo: scored.fields.invoiceNo?.value ?? null,
-      total: parseAmount(scored.fields.total?.value) ?? null,
-      invoiceDate: parseDate(scored.fields.invoiceDate?.value)?.date ?? null,
-      vendorName: scored.fields.vendorName?.value ?? null,
-      currency: scored.fields.currency?.value ?? null,
-    },
-    id,
-  );
-  applyDuplicateResult(scored, dup);
-
-  return scored;
+): ScoredInvoice {
+  return scoreInvoice(raw, correctedKeys, confirmedKeys);
 }
 
-/** `rescore`, then persist — shared by every function that represents an actual write
- *  event (a correction, a confirmation, or a delete-triggered revalidation). */
+/** `rescore`, persisted — shared by every function that represents an actual write event
+ *  (a correction or a confirmation). What's written to storage never includes duplicate
+ *  status; the live overlay below is applied to the *returned* object only, after the
+ *  persist, so the API response reflects the current table without that ever touching what
+ *  got saved. */
 async function rescoreAndPersist(
   id: string,
   raw: RawInvoice,
   correctedKeys: Set<string>,
   confirmedKeys: Set<string>,
 ): Promise<ScoredInvoice> {
-  const scored = await rescore(id, raw, correctedKeys, confirmedKeys);
+  const scored = rescore(raw, correctedKeys, confirmedKeys);
   await updateInvoiceScored(id, raw, scored);
+  await overlayLiveDuplicateStatus(scored, id);
   return scored;
 }
 
@@ -206,27 +192,13 @@ export async function applyConfirmation(
 }
 
 /**
- * Re-run duplicate detection for an existing invoice with no field change and persist it —
- * used right after deleting another invoice (D49), so a stale "possible duplicate of X"
- * flag pointing at the now-gone invoice X gets refreshed in storage too (kept for the
- * list-page badge and CSV/JSON export, D50 — see `getLiveScoredInvoice` for the consumers
- * that no longer need this to be pre-computed at all).
- */
-export async function revalidateDuplicate(id: string): Promise<ScoredInvoice | null> {
-  const loaded = await loadReconstructed(id);
-  if (!loaded) return null;
-
-  return rescoreAndPersist(id, loaded.raw, loaded.correctedKeys, loaded.confirmedKeys);
-}
-
-/**
  * The current, correct scored state of an invoice, including a LIVE cross-invoice duplicate
- * check — never a stored flag (D50). This is the single source of truth for anywhere
- * duplicate status actually matters: the detail page (what's shown to a human) and the
- * trust route (what's allowed). Read-only — nothing is persisted, so calling this can never
- * itself go stale the way writing-then-trusting a flag could. Accepts an optional
- * already-fetched row so a caller like the detail page, which needs the row for other
- * metadata anyway, doesn't pay for a second query.
+ * check — never persisted, anywhere, under any circumstance (D52). This is the single
+ * source of truth for every consumer: the detail page, the trust route, the list page's
+ * badge, and export. Read-only — nothing is written here, so calling this can never itself
+ * go stale the way writing-then-trusting a flag could. Accepts an optional already-fetched
+ * row so a caller like the detail page, which needs the row for other metadata anyway,
+ * doesn't pay for a second query.
  */
 export async function getLiveScoredInvoice(
   id: string,
@@ -235,5 +207,7 @@ export async function getLiveScoredInvoice(
   const loaded = await loadReconstructed(id, prefetchedRow);
   if (!loaded) return null;
 
-  return rescore(id, loaded.raw, loaded.correctedKeys, loaded.confirmedKeys);
+  const scored = rescore(loaded.raw, loaded.correctedKeys, loaded.confirmedKeys);
+  await overlayLiveDuplicateStatus(scored, id);
+  return scored;
 }

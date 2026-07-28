@@ -55,6 +55,17 @@ export interface InvoiceView {
   hasDocument: boolean;
 }
 
+/** `openFlags`/`canTrust` from a fields map + status — shared so a caller that mutates
+ *  `fields` after `toView` (e.g. export overlaying a live duplicate result, D52) recomputes
+ *  the gate the same way `toView` itself does, rather than re-deriving it separately. */
+export function computeTrust(
+  fields: Record<string, ScoredField>,
+  status: string,
+): { openFlags: number; canTrust: boolean } {
+  const openFlags = Object.values(fields).reduce((n, f) => n + (f.flags?.length ?? 0), 0);
+  return { openFlags, canTrust: openFlags === 0 && status !== "failed" };
+}
+
 export function toView(row: StoredInvoice): InvoiceView {
   const fields: Record<string, ScoredField> = {};
 
@@ -71,8 +82,7 @@ export function toView(row: StoredInvoice): InvoiceView {
     }
   });
 
-  const all = Object.values(fields);
-  const openFlags = all.reduce((n, f) => n + (f.flags?.length ?? 0), 0);
+  const { openFlags, canTrust } = computeTrust(fields, row.status);
 
   return {
     id: row.id,
@@ -81,7 +91,7 @@ export function toView(row: StoredInvoice): InvoiceView {
     fields,
     lineCount: lines.length,
     openFlags,
-    canTrust: openFlags === 0 && row.status !== "failed",
+    canTrust,
     hasDocument: row.fileData != null,
   };
 }

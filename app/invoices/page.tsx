@@ -203,17 +203,11 @@ export default async function InvoicesPage({
                   <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${badge(inv.status)}`}>
                     {inv.status.replace("_", " ")}
                   </span>
-                  {(() => {
-                    const dup = duplicates.get(inv.id) ?? null;
-                    if (!dup) return null;
-                    const tone = dup === "hard" ? "bg-danger-bg text-danger" : "bg-warning-bg text-warning";
-                    const label = dup === "hard" ? "duplicate" : "possible duplicate";
-                    return (
-                      <span className={`ml-1.5 rounded-full px-2 py-0.5 text-xs font-medium ${tone}`}>
-                        {label}
-                      </span>
-                    );
-                  })()}
+                  {duplicates.has(inv.id) && (
+                    <span className="ml-1.5 rounded-full bg-danger-bg px-2 py-0.5 text-xs font-medium text-danger">
+                      duplicate
+                    </span>
+                  )}
                 </td>
                 <td className="py-2 pr-4">
                   {inv.fileData != null && (

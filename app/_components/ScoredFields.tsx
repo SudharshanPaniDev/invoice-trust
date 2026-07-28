@@ -1,15 +1,8 @@
 import type { ScoredField } from "@/lib/validation/confidence";
 import { EditableField } from "../invoices/[id]/EditableField";
 import { ConfirmField } from "../invoices/[id]/ConfirmField";
-import { DeleteDuplicateButton } from "../invoices/[id]/DeleteDuplicateButton";
+import { DuplicateResolution } from "../invoices/[id]/DuplicateResolution";
 import { Tooltip } from "./Tooltip";
-
-// Duplicated from `HARD_MATCH_PREFIX` in lib/duplicate.ts rather than imported — that module
-// pulls in the Prisma client, which can't be bundled into this component's client tree
-// (ScoredFields renders inside DetailInteractive, a "use client" component). Must stay in
-// sync with that constant; classifyDuplicateField in lib/duplicate.ts makes the same check
-// server-side for the actual delete authorization (D48/D49) — this one is UI-only.
-const HARD_DUPLICATE_FLAG_PREFIX = "Possible duplicate of invoice";
 
 const FIELDS: [string, string][] = [
   ["vendorName", "Vendor"],
@@ -87,17 +80,14 @@ function Confidence({
 /** A flag's full arithmetic/reason text can run long (e.g. "Subtotal 15000.00 + tax
  *  2700.00 = 17700.00, but total says 17000.00") — showing that inline breaks the table's
  *  row rhythm. `<details>` keeps the row compact (one truncated line) and reveals the full
- *  text on click, natively keyboard- and touch-accessible (no JS, no tooltip-only text).
- *  `tone` distinguishes a blocking flag (red) from a non-blocking warning (amber, D44) —
- *  same visual language this app already uses for danger vs. warning everywhere else. */
-function FlagDisclosure({ flag, tone = "danger" }: { flag: string; tone?: "danger" | "warning" }) {
-  const color = tone === "warning" ? "text-warning" : "text-danger";
+ *  text on click, natively keyboard- and touch-accessible (no JS, no tooltip-only text). */
+function FlagDisclosure({ flag }: { flag: string }) {
   return (
     <details className="cursor-pointer">
-      <summary className={`max-w-[220px] truncate marker:content-none [&::-webkit-details-marker]:hidden ${color}`}>
+      <summary className="max-w-[220px] truncate text-danger marker:content-none [&::-webkit-details-marker]:hidden">
         ⚠ {flag}
       </summary>
-      <p className={`mt-1 max-w-[260px] whitespace-normal ${color}`}>{flag}</p>
+      <p className="mt-1 max-w-[260px] whitespace-normal text-danger">{flag}</p>
     </details>
   );
 }
@@ -188,12 +178,11 @@ export function ScoredFields({
                   {f?.flags.map((flag, i) => (
                     <div key={`f${i}`} className="flex flex-col items-start gap-1">
                       <FlagDisclosure flag={flag} />
-                      {editInvoiceId && flag.startsWith(HARD_DUPLICATE_FLAG_PREFIX) && (
-                        <DeleteDuplicateButton invoiceId={editInvoiceId} />
-                      )}
                     </div>
                   ))}
-                  {f?.warnings?.map((w, i) => <FlagDisclosure key={`w${i}`} flag={w} tone="warning" />)}
+                  {editInvoiceId && f?.duplicate && (
+                    <DuplicateResolution invoiceId={editInvoiceId} matchId={f.duplicate.matchId} />
+                  )}
                 </td>
               </tr>
             );

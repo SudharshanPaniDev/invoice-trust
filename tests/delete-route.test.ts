@@ -1,38 +1,32 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { DELETE } from "@/app/api/invoices/[id]/route";
 import { prisma } from "@/lib/db";
-import { revalidateDuplicate } from "@/lib/correct";
 
 vi.mock("@/lib/db", () => ({
-  prisma: { invoice: { findUnique: vi.fn(), findMany: vi.fn(), delete: vi.fn() } },
+  prisma: {
+    invoice: { findUnique: vi.fn(), findMany: vi.fn(), delete: vi.fn() },
+    dismissedDuplicate: { findMany: vi.fn() },
+  },
 }));
 vi.mock("@/lib/correct", () => ({
   applyCorrection: vi.fn(),
-  revalidateDuplicate: vi.fn(),
 }));
 
 const params = (id: string) => ({ params: Promise.resolve({ id }) });
 
-/** A row shaped for BOTH live classification (vendorGSTINField/total/invoiceDate, read by
- *  `classifyAllDuplicates`, D50) and the stale-flag staleIds selection that still runs after
- *  a delete (invoiceNoField.flags/.warnings, read by `classifyDuplicateField`). */
+/** Shaped for live classification (`classifyAllDuplicates`, D50/D52) — GSTIN/invoiceNo/
+ *  total/date only; nothing about duplicate status is ever read from stored flags anymore. */
 function identityRow(overrides: {
   id: string;
   gstin?: string;
   invoiceNo?: string;
   total?: number;
   invoiceDate?: Date;
-  flags?: string[];
-  warnings?: string[];
 }) {
   return {
     id: overrides.id,
     vendorGSTINField: overrides.gstin ? { value: overrides.gstin } : null,
-    invoiceNoField: {
-      value: overrides.invoiceNo ?? null,
-      flags: overrides.flags ?? [],
-      ...(overrides.warnings ? { warnings: overrides.warnings } : {}),
-    },
+    invoiceNoField: { value: overrides.invoiceNo ?? null },
     total: overrides.total ?? null,
     invoiceDate: overrides.invoiceDate ?? null,
   };
@@ -42,10 +36,10 @@ beforeEach(() => {
   vi.mocked(prisma.invoice.findUnique).mockReset();
   vi.mocked(prisma.invoice.findMany).mockReset().mockResolvedValue([]);
   vi.mocked(prisma.invoice.delete).mockReset();
-  vi.mocked(revalidateDuplicate).mockReset();
+  vi.mocked(prisma.dismissedDuplicate.findMany).mockReset().mockResolvedValue([]);
 });
 
-describe("DELETE /api/invoices/:id — only while a LIVE hard-duplicate match exists (D48/D49/D50)", () => {
+describe("DELETE /api/invoices/:id — only while a LIVE duplicate candidate exists (D48/D49/D50/D52, one tier D53)", () => {
   it("404s when the invoice doesn't exist", async () => {
     vi.mocked(prisma.invoice.findUnique).mockResolvedValue(null as never);
 
@@ -64,21 +58,22 @@ describe("DELETE /api/invoices/:id — only while a LIVE hard-duplicate match ex
     const res = await DELETE(new Request("http://x"), params("inv1"));
 
     expect(res.status).toBe(409);
-    expect((await res.json()).error).toMatch(/hard-duplicate flag/);
+    expect((await res.json()).error).toMatch(/duplicate candidate/);
     expect(prisma.invoice.delete).not.toHaveBeenCalled();
   });
 
-  it("409s for a soft (non-blocking) live match — only a hard match authorizes delete", async () => {
+  it("allows delete for a GSTIN + date-proximity match too — any candidate authorizes it, not just an exact one", async () => {
     vi.mocked(prisma.invoice.findUnique).mockResolvedValue({ id: "inv1" } as never);
     vi.mocked(prisma.invoice.findMany).mockResolvedValue([
       identityRow({ id: "inv1", gstin: "G1", invoiceNo: "INV-1", total: 100, invoiceDate: new Date("2026-01-01") }),
       identityRow({ id: "inv2", gstin: "G1", invoiceNo: "INV-OLD", total: 100, invoiceDate: new Date("2026-01-03") }),
     ] as never);
+    vi.mocked(prisma.invoice.delete).mockResolvedValue({} as never);
 
     const res = await DELETE(new Request("http://x"), params("inv1"));
 
-    expect(res.status).toBe(409);
-    expect(prisma.invoice.delete).not.toHaveBeenCalled();
+    expect(res.status).toBe(200);
+    expect(prisma.invoice.delete).toHaveBeenCalledWith({ where: { id: "inv1" } });
   });
 
   it("409s when the invoice has no GSTIN/total to compare — nothing can ever match", async () => {
@@ -94,7 +89,23 @@ describe("DELETE /api/invoices/:id — only while a LIVE hard-duplicate match ex
     expect(prisma.invoice.delete).not.toHaveBeenCalled();
   });
 
-  it("deletes and returns 200 when a LIVE hard match currently exists", async () => {
+  it("409s when the only match has already been dismissed", async () => {
+    vi.mocked(prisma.invoice.findUnique).mockResolvedValue({ id: "inv1" } as never);
+    vi.mocked(prisma.invoice.findMany).mockResolvedValue([
+      identityRow({ id: "inv1", gstin: "G1", invoiceNo: "INV-1", total: 100 }),
+      identityRow({ id: "inv2", gstin: "G1", invoiceNo: "INV-1", total: 100 }),
+    ] as never);
+    vi.mocked(prisma.dismissedDuplicate.findMany).mockResolvedValue([
+      { invoiceIdLow: "inv1", invoiceIdHigh: "inv2" },
+    ] as never);
+
+    const res = await DELETE(new Request("http://x"), params("inv1"));
+
+    expect(res.status).toBe(409);
+    expect(prisma.invoice.delete).not.toHaveBeenCalled();
+  });
+
+  it("deletes and returns 200 when a LIVE duplicate candidate currently exists", async () => {
     vi.mocked(prisma.invoice.findUnique).mockResolvedValue({ id: "inv1" } as never);
     vi.mocked(prisma.invoice.findMany).mockResolvedValue([
       identityRow({ id: "inv1", gstin: "G1", invoiceNo: "INV-1", total: 100 }),
@@ -107,42 +118,8 @@ describe("DELETE /api/invoices/:id — only while a LIVE hard-duplicate match ex
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ id: "inv1", deleted: true });
     expect(prisma.invoice.delete).toHaveBeenCalledWith({ where: { id: "inv1" } });
-  });
-
-  it("re-validates only remaining invoices that currently show a STORED duplicate signal (D49)", async () => {
-    vi.mocked(prisma.invoice.findUnique).mockResolvedValue({ id: "inv1" } as never);
-    // Call #1: classifyAllDuplicates's live authorization check (inv1 hard-matches inv1match).
-    vi.mocked(prisma.invoice.findMany).mockResolvedValueOnce([
-      identityRow({ id: "inv1", gstin: "G1", invoiceNo: "INV-1", total: 100 }),
-      identityRow({ id: "inv1match", gstin: "G1", invoiceNo: "INV-1", total: 100 }),
-    ] as never);
-    // Call #2: staleIds selection off the STORED flags/warnings text, post-delete.
-    vi.mocked(prisma.invoice.findMany).mockResolvedValueOnce([
-      identityRow({ id: "inv2", flags: ["Possible duplicate of invoice inv1 (same GSTIN, invoice number, and total)"] }),
-      identityRow({ id: "inv3", flags: [] }),
-    ] as never);
-    vi.mocked(prisma.invoice.delete).mockResolvedValue({} as never);
-
-    await DELETE(new Request("http://x"), params("inv1"));
-
-    expect(revalidateDuplicate).toHaveBeenCalledTimes(1);
-    expect(revalidateDuplicate).toHaveBeenCalledWith("inv2");
-    expect(revalidateDuplicate).not.toHaveBeenCalledWith("inv3");
-  });
-
-  it("does not re-validate anything when no remaining invoice shows a stored duplicate signal", async () => {
-    vi.mocked(prisma.invoice.findUnique).mockResolvedValue({ id: "inv1" } as never);
-    vi.mocked(prisma.invoice.findMany).mockResolvedValueOnce([
-      identityRow({ id: "inv1", gstin: "G1", invoiceNo: "INV-1", total: 100 }),
-      identityRow({ id: "inv1match", gstin: "G1", invoiceNo: "INV-1", total: 100 }),
-    ] as never);
-    vi.mocked(prisma.invoice.findMany).mockResolvedValueOnce([
-      identityRow({ id: "inv3", flags: [] }),
-    ] as never);
-    vi.mocked(prisma.invoice.delete).mockResolvedValue({} as never);
-
-    await DELETE(new Request("http://x"), params("inv1"));
-
-    expect(revalidateDuplicate).not.toHaveBeenCalled();
+    // D52: nothing is persisted for duplicates, so nothing needs revalidating after a
+    // delete — exactly one findMany call (the authorization check), not a second pass.
+    expect(prisma.invoice.findMany).toHaveBeenCalledTimes(1);
   });
 });

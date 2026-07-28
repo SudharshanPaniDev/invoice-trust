@@ -1,5 +1,6 @@
 import type { RawInvoice, RawField } from "../schema";
 import { runRules, type RuleResult } from "./rules";
+import type { MatchReason } from "../duplicate";
 
 /**
  * Turn raw extraction + rule results into per-field EARNED confidence (D13):
@@ -23,10 +24,11 @@ export interface ScoredField {
    *  edited is `corrected`, not `confirmed`. */
   confirmed?: boolean;
   flags: string[];
-  /** Non-blocking signals — visible, but never floor confidence or count toward openFlags
-   *  (D44). Unlike flags, a warning isn't cleared by correcting a value; it's a pattern a
-   *  human judges, not a verified defect. */
-  warnings?: string[];
+  /** A live, cross-invoice duplicate candidate (D53) — structured, not just text inside
+   *  `flags`, so the UI can wire up "same document" (delete) and "not a duplicate" (dismiss)
+   *  without parsing a message string. Always accompanied by a `flags` entry too (a
+   *  duplicate candidate always blocks trust until a human resolves it — one tier, not two). */
+  duplicate?: { matchId: string; reason: MatchReason };
 }
 
 export interface ScoredInvoice {

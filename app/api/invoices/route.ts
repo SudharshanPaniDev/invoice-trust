@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { extractInvoice } from "@/lib/extract";
 import { scoreInvoice } from "@/lib/validation/confidence";
 import { storeInvoice } from "@/lib/store";
-import { findDuplicates, applyDuplicateResult } from "@/lib/duplicate";
-import { parseAmount, parseDate } from "@/lib/validation/parse";
+import { overlayLiveDuplicateStatus } from "@/lib/duplicate";
 
 // Prisma (pg adapter) + Gemini SDK need the Node runtime, not edge.
 export const runtime = "nodejs";
@@ -26,21 +25,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: result.error }, { status: 422 });
   }
 
+  // Scoring is pure and single-invoice; nothing about cross-invoice duplicate status is
+  // computed here, or ever persisted (D52) — it's derived state, not this invoice's own.
   const scored = scoreInvoice(result.data);
-
-  // Cross-invoice duplicate detection (D44) — never blocks the upload itself, only flags/
-  // warns the stored result, same as every other validation issue in this app.
-  const dup = await findDuplicates({
-    gstin: scored.fields.vendorGSTIN?.value ?? null,
-    invoiceNo: scored.fields.invoiceNo?.value ?? null,
-    total: parseAmount(scored.fields.total?.value) ?? null,
-    invoiceDate: parseDate(scored.fields.invoiceDate?.value)?.date ?? null,
-    vendorName: scored.fields.vendorName?.value ?? null,
-    currency: scored.fields.currency?.value ?? null,
-  });
-  applyDuplicateResult(scored, dup);
-
   const invoice = await storeInvoice(result.data, scored, file.name);
+
+  // Overlay a LIVE duplicate check onto the returned object only, now that this invoice has
+  // an id to exclude itself with — never written back to storage.
+  await overlayLiveDuplicateStatus(scored, invoice.id);
+
   return NextResponse.json({
     id: invoice.id,
     status: invoice.status,

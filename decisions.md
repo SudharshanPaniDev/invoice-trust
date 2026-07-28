@@ -2412,3 +2412,168 @@ tier (Levenshtein distance, etc.) — exact-after-normalization only, to keep th
 evidence basis simple and explainable, consistent with D44's original "no fuzzy vendor-name
 fallback" instinct — just no longer used as a reason to skip the check entirely.
 
+---
+
+## D52 — Duplicate status is never persisted; always derived (finishing D50)
+
+**The decision:** duplicate detection stops writing anything to the database, with no
+remaining exceptions. D50 made the trust-gating consumers (detail page, trust route, list
+badge, delete gate) compute duplicate status live instead of trusting a stored flag, but
+export — and the D49 delete-time `revalidateDuplicate` patch that kept export's copy
+reasonably fresh — were left on the old, write-time-persisted model as a deliberate, smaller
+exception. This closes that exception: every consumer, including export, now computes
+duplicate status live, and the database's `invoiceNoField` JSON never contains
+duplicate-related text at all, on any invoice, ever again.
+
+**The rule, stated plainly:** duplicate status is a fact about an invoice's relationship to
+every *other* currently-existing invoice — it can never be a property of that invoice alone,
+so persisting it as if it were is a category error, not a caching choice that happened to go
+stale. The fix isn't "cache it more carefully." It's "stop treating a derived, cross-row fact
+as though it belongs to one row's stored data" — full stop, not a partial one.
+
+**Why export was the last holdout, and why that reasoning didn't survive scrutiny:** export
+was left on the stored model because "an export is a snapshot in time." That's true of the
+*downloaded file* — once someone has the CSV, it doesn't update itself. It was never actually
+a requirement that the **source data** be pre-computed and stored; computing duplicate status
+live at the moment export runs still produces a snapshot (accurate as of that moment) — a
+truer one, in fact, than reading whatever happened to be stored from whenever the invoice was
+last corrected or confirmed, which could be arbitrarily old. The "snapshot" argument justified
+the file being static, not the query behind it being stale.
+
+**Checked before committing to this, not assumed:** the `scored` JSON returned by the
+correction and confirmation API routes isn't read by any client code — `EditableField` and
+`ConfirmField` only check success/failure and call `router.refresh()`, which re-renders from a
+live check regardless. So removing duplicate info from what gets persisted has no user-visible
+effect on either flow; nothing downstream was depending on it being there.
+
+**What this removes, not just stops calling:**
+- The `findDuplicates` + `applyDuplicateResult` calls inside the upload route and inside
+  `rescore`/`rescoreAndPersist` (correction, confirmation) — scoring an invoice on write
+  becomes pure and single-invoice again; no DB round trip for duplicates happens on write.
+- `revalidateDuplicate` (D49) in full — nothing stored can go stale, so nothing needs
+  refreshing after a delete.
+- `classifyDuplicateField` (string-prefix parsing of stored flags/warnings text) — nothing
+  persisted left to parse.
+- The DELETE route's post-delete "staleIds" scan that called the above two — same reason.
+
+**What stays:** `applyDuplicateResult` — the pure, in-memory function that attaches a
+duplicate result onto one `ScoredField` — is kept. It's still the one place a duplicate
+result gets applied to a field's confidence/flags for display. It just moves to being called
+exclusively from the *read* path (`getLiveScoredInvoice`, `classifyAllDuplicates`, and now
+export's per-row live overlay), never from a write path, and its output never reaches
+`updateInvoiceScored`/`storeInvoice` again.
+
+**The alternative rejected:** keep write-time persistence solely for export, as a documented,
+deliberate, narrower exception — the position going into this decision, and the one I'd
+argued for a few turns earlier in this exact session. Reconsidered once the actual
+justification for it (the snapshot argument, above) didn't hold up under a direct question
+about whether it was really needed.
+
+**Net effect:** this is a simplification, not a bigger system — line count goes down. One
+honest rule going forward: duplicate status is never stored, anywhere, under any
+circumstance. The answer to "is this derived or persisted" stops being "depends which part of
+the app you're asking about."
+
+**Scope note, explicitly deferred, not bundled in:** this settles the persist-vs-derive
+question only. It does not yet address the separate, larger redesign already discussed —
+giving duplicate status its own structured field (`ScoredField.duplicate`) instead of
+encoding it as text inside `flags`/`warnings`, and unifying the two independent `canTrust`
+formulas (`toView` vs. `scoreInvoice`) into one. That's real, already-scoped follow-up work,
+deliberately sequenced *after* this decision, not folded into it.
+
+**Built and verified.** `lib/duplicate.ts` gained `applyDuplicateInfo` (the one place a
+resolved match actually mutates a field — shared by the single-invoice and batch paths, so
+message text can't drift between them) and `overlayLiveDuplicateStatus` (the one live-check
+entry point, used by `getLiveScoredInvoice`, and by the correction/confirmation/upload
+routes to overlay the *returned* object only, after persisting). `rescore` in `lib/correct.ts`
+is now genuinely pure — no DB call, no duplicate check — and `rescoreAndPersist` persists it
+before the overlay ever touches the object, so what's saved is provably clean; a test asserts
+this ordering directly rather than trusting it. `revalidateDuplicate` and the DELETE route's
+post-delete "staleIds" scan are deleted, not deprecated. Export now calls
+`classifyAllDuplicates` (extended to carry match id + reason, not just tier, since export
+needs the actual message) and recomputes its trust gate via a new shared `computeTrust`
+helper in `lib/invoice-view.ts`, extracted so `toView` and export use identical math instead
+of two copies of the same formula. Verified directly against the live DB: `invoiceNoField`
+on a freshly-scored row now contains no duplicate text at all, while `getLiveScoredInvoice`
+and `classifyAllDuplicates` still correctly surface the real Northgate soft match on top —
+confirming the derived and persisted layers are now fully, provably separate. 177/177 tests
+passing, clean build.
+
+---
+
+## D53 — Collapsed hard/soft duplicates into one concept: a Duplicate Candidate
+
+**The decision:** duplicate detection no longer has two tiers. There is exactly one
+business-meaningful state — a Duplicate Candidate: a pairing that needs a human to decide
+"same document" or "genuinely different." How the candidate was found (GSTIN match vs. the
+no-GSTIN vendor-name fallback, same fiscal year or not) is now supporting evidence shown to
+that human, never a distinct type with different app behavior. Every candidate blocks trust,
+uniformly, until a human resolves it — no exception carved out for weaker-evidence matches.
+
+**Why the split existed, and why it didn't survive a first-principles challenge:** "hard"
+and "soft" modeled the matching algorithm's own confidence — a label for *how the match was
+found*, not anything the business asks about. Pressure-tested directly against the one thing
+this feature exists to prevent (double payment): that risk doesn't care how a candidate was
+found, only whether it's been resolved. A "soft" match sitting as a passive, non-blocking
+badge is a real gap, not a feature — it's precisely the failure mode (a flagged candidate
+quietly getting trusted and paid anyway) duplicate detection exists to catch. The
+"don't punish legitimate recurring invoices" concern that motivated the soft tier doesn't
+actually require a silent badge either — it only requires that dismissing a false alarm be
+cheap, which a unified model gives directly (one click, remembered).
+
+**What's new — the one genuinely persisted fact:** a `DismissedDuplicate` table
+(`invoiceIdLow`, `invoiceIdHigh`, normalized so the pair reads the same either direction).
+This is a deliberate, justified exception to "duplicate status is never persisted" (D50): a
+human's judgment that two specific invoices are *not* the same document isn't re-derivable
+from the invoice data the way the match itself is — it has to be remembered somewhere, or
+the same resolved candidate would nag again on every page load.
+
+**Why this table exists, in plain terms — and why it doesn't undo D50–D52:** D50–D52
+settled that duplicate *matching* must never be persisted, because it's a fact you can
+always recompute from the invoices themselves (same GSTIN, same invoice number, same
+total). This table stores something different in kind: not "are these a match," but "did a
+human already look at this specific pair and say no." That's not something any comparison
+of invoice fields could ever recover — it only exists because a person did something. Two
+invoices flagged as similar don't stop being similar just because a human dismissed them;
+nothing about their *data* changes. Without somewhere to remember the dismissal, the exact
+same warning would reappear the moment either invoice's page reloaded, and the human's
+decision would be silently thrown away every time. So the rule that's actually being applied
+consistently is: **derive anything computable from current data — never store it. Persist
+anything that records a human's decision — because there's no way to compute it back.**
+`corrected` and `confirmed` on a field (D17/D48) already work this exact way, for the exact
+same reason; `DismissedDuplicate` is that same pattern, just for "a human cleared this pair"
+instead of "a human edited this field."
+
+**Resolution, made concrete:** every duplicate candidate gets exactly two actions, always
+together, never one without the other — "Yes, same document" (the existing delete flow,
+D49, now authorized by *any* unresolved candidate, not just a hard one) and "Not a duplicate"
+(a new `POST /api/invoices/:id/dismiss-duplicate`, recording the dismissal and clearing the
+candidate — for this specific pair only; a different future pairing still surfaces normally).
+
+**What got simpler, not just different:**
+- `matchTier` returns a reason or nothing — no tier, no fiscal-year "downgrade to soft"
+  branch (a cross-year match is still just a match, explained honestly in its reason text).
+- `applyDuplicateInfo` collapses to one unconditional treatment — floor confidence, add a
+  flag, set the structured `duplicate` field — instead of branching on tier.
+- `ScoredField.warnings` is deleted outright — it existed for exactly one purpose (the soft
+  tier) and had no other caller; `FlagDisclosure`'s `tone` prop goes with it.
+- `DeleteDuplicateButton` becomes `DuplicateResolution` — one component offering both
+  outcomes, replacing a prefix-string check (`flag.startsWith(...)`, duplicated between
+  `ScoredFields.tsx` and `lib/duplicate.ts` purely by comment discipline) with a direct,
+  typed `f.duplicate` field access. That client/server string-duplication risk is gone.
+- The list badge collapses to one label ("duplicate"), one color, no tier branching.
+- The DELETE route's authorization is `!duplicates.has(id)` instead of a tier check.
+
+**What I deliberately cut:** a persisted, tiered "confidence score" for how sure a match is
+— the reason text still explains the evidence, but nothing about the app's behavior depends
+on it anymore. Fuzzy resolution states like "acknowledged but not yet decided" — a candidate
+is either resolved (deleted or dismissed) or it isn't; no third, in-between state.
+
+**Honest self-assessment:** this reverses part of D44's original design and, implicitly,
+D51's framing of the fiscal-year and no-GSTIN cases as separate tiers. That's not a
+contradiction to paper over — D51 correctly fixed real gaps in the *matching rule itself*
+(the fiscal-year bound, the no-GSTIN fallback), and those fixes are untouched here; only the
+decision to expose match confidence as distinct, differently-behaving user-facing types
+turned out to be modeling the algorithm instead of the business, and needed reversing
+separately once actually challenged on it.
+

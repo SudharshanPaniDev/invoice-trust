@@ -95,27 +95,30 @@ describe("ScoredFields — flags", () => {
   });
 });
 
-describe("ScoredFields — delete a hard duplicate (D48/D49)", () => {
-  it("offers a delete option next to a hard-duplicate flag, in an editable context", () => {
-    const flag = "Possible duplicate of invoice INV-100 (same GSTIN, invoice number, and total)";
+describe("ScoredFields — resolve a duplicate candidate (D48/D49, single-tier D53)", () => {
+  const flag = "Possible duplicate of invoice INV-100 (same GSTIN, invoice number, and total)";
+  const duplicate = { matchId: "INV-100", reason: "gstin_invoiceno_total" as const };
+
+  it("offers both resolution actions next to a duplicate candidate, in an editable context", () => {
     render(
       <ScoredFields
-        fields={{ invoiceNo: mkField({ confidence: 0.3, flags: [flag] }) }}
+        fields={{ invoiceNo: mkField({ confidence: 0.3, flags: [flag], duplicate }) }}
         editInvoiceId="inv1"
       />,
     );
     const row = screen.getByText("Invoice No").closest("tr")!;
-    expect(within(row).getByRole("button", { name: /Delete this upload/ })).toBeInTheDocument();
+    expect(within(row).getByRole("button", { name: "Yes, same document" })).toBeInTheDocument();
+    expect(within(row).getByRole("button", { name: "Not a duplicate" })).toBeInTheDocument();
   });
 
-  it("does not offer delete outside an editable context", () => {
-    const flag = "Possible duplicate of invoice INV-100 (same GSTIN, invoice number, and total)";
-    render(<ScoredFields fields={{ invoiceNo: mkField({ confidence: 0.3, flags: [flag] }) }} />);
+  it("does not offer resolution outside an editable context", () => {
+    render(<ScoredFields fields={{ invoiceNo: mkField({ confidence: 0.3, flags: [flag], duplicate }) }} />);
     const row = screen.getByText("Invoice No").closest("tr")!;
-    expect(within(row).queryByRole("button", { name: /Delete this upload/ })).not.toBeInTheDocument();
+    expect(within(row).queryByRole("button", { name: "Yes, same document" })).not.toBeInTheDocument();
+    expect(within(row).queryByRole("button", { name: "Not a duplicate" })).not.toBeInTheDocument();
   });
 
-  it("does not offer delete for an unrelated flag (e.g. a checksum failure)", () => {
+  it("does not offer resolution for an unrelated flag with no duplicate candidate (e.g. a checksum failure)", () => {
     render(
       <ScoredFields
         fields={{ vendorGSTIN: mkField({ confidence: 0.3, flags: ["GSTIN checksum failed"] }) }}
@@ -123,7 +126,7 @@ describe("ScoredFields — delete a hard duplicate (D48/D49)", () => {
       />,
     );
     const row = screen.getByText("GSTIN").closest("tr")!;
-    expect(within(row).queryByRole("button", { name: /Delete this upload/ })).not.toBeInTheDocument();
+    expect(within(row).queryByRole("button", { name: "Yes, same document" })).not.toBeInTheDocument();
   });
 });
 

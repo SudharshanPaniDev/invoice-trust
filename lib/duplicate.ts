@@ -1,49 +1,48 @@
 import { prisma } from "./db";
 import { MONEY_TOL } from "./validation/rules";
-import { normalizeCurrency } from "./validation/parse";
-import type { ScoredInvoice } from "./validation/confidence";
+import { normalizeCurrency, parseAmount, parseDate } from "./validation/parse";
+import type { ScoredInvoice, ScoredField } from "./validation/confidence";
 
 /**
- * Cross-invoice duplicate detection (D44, rebuilt D51) — extends "confidence earned by
- * validation" across invoices, not just within one.
+ * Cross-invoice duplicate detection (D44, rebuilt D51, collapsed to one tier D53).
  *
- * Four match reasons, two tiers:
+ * There is exactly one business concept here: a Duplicate Candidate — a pairing that needs
+ * a human to look and decide "same document" or "genuinely different." How the candidate
+ * was found (GSTIN match vs. a vendor-name fallback, same fiscal year or not) is supporting
+ * evidence shown to that human, never a distinct type with different app behavior. A hard
+ * vs. soft split modeled the matching algorithm's own confidence, not anything the business
+ * actually asks about — and the double-payment risk this feature exists to prevent doesn't
+ * care how a candidate was found, only whether it's been resolved.
  *
- * Tier 1 (hard, blocking): same GSTIN + same invoice number + same total, in the same
- * financial year. Near-certain — GST rules require unique invoice numbers per GSTIN *per
- * financial year*, so this is either the same document twice, an OCR/data-entry error, or a
- * real compliance issue. The financial-year check is what actually makes this rule match its
- * own justification: without it, a vendor legitimately reusing a number a year later (which
- * GST law explicitly permits) would be wrongly, permanently blocked.
+ * Four match reasons (evidence, not tiers):
  *
- * Tier 1, cross-year (soft): the exact same match, but the invoice dates fall in different
- * financial years — GST law's own uniqueness guarantee doesn't cover this case, so it can't
- * block trust, but an exact GSTIN+invoiceNo+total coincidence a year apart is still unusual
- * enough to flag for a human to glance at.
+ * Same GSTIN + invoice number + total, same financial year: near-certain — GST rules
+ * require unique invoice numbers per GSTIN per financial year, so this is either the same
+ * document twice, an OCR/data-entry error, or a real compliance issue.
  *
- * Tier 2 (soft, non-blocking): same GSTIN + same total + invoice date within 7 days, but a
- * *different* invoice number — the pattern a deliberately-altered-reference resubmission
- * would produce. Also, unavoidably, what an ordinary recurring vendor charge looks like —
- * which is exactly why this tier must never floor confidence or block trust; it's a pattern
- * for a human to judge, not a verified defect.
+ * Same GSTIN + invoice number + total, different financial year: the exact same match, but
+ * GST law's own uniqueness guarantee doesn't cover this case (a vendor may legitimately
+ * reuse a number a year later) — still a candidate worth a glance, just explained honestly.
  *
- * Tier 3 / no-GSTIN fallback (soft, non-blocking): GSTIN is missing on at least one side
- * (extraction can legitimately miss it), so match on an exact — not fuzzy — vendor name +
- * invoice number + total instead. Weaker legal grounding than GSTIN (two different legal
- * entities could in principle share a display name), so this never blocks trust either, but
- * without it, the exact same document uploaded twice with no GSTIN extracted goes completely
- * undetected — a real gap the original GSTIN-only design left open.
+ * Same GSTIN + total, invoice date within 7 days, different invoice number: the pattern a
+ * deliberately-altered-reference resubmission would produce — also, unavoidably, what an
+ * ordinary recurring vendor charge looks like. A human decides which; the system doesn't.
  *
- * A currency mismatch (when both sides have one) rules out every tier, at any point:
- * numerically-equal totals in different currencies are never the same transaction.
+ * No-GSTIN fallback: GSTIN missing on at least one side (extraction can legitimately miss
+ * it), so match on an exact — not fuzzy — vendor name + invoice number + total instead.
+ *
+ * A currency mismatch (when both sides have one) rules out a match at any point.
+ *
+ * Resolution: exactly two actions, both human, both remembered. "Same document" deletes the
+ * redundant row (there's nothing to fix, only removing the duplicate is the honest answer,
+ * D49). "Not a duplicate" records a dismissal for that specific pair — the one genuinely
+ * persisted fact in this whole file, since a human's judgment isn't re-derivable the way the
+ * match itself is (D50/D52).
  */
 
 const DATE_PROXIMITY_DAYS = 7;
 const DAY_MS = 24 * 60 * 60 * 1000;
-// Shared with the classifier below, so the detection substring can never drift from the
-// actual message text.
-const HARD_MATCH_PREFIX = "Possible duplicate of invoice";
-const SOFT_MATCH_PREFIX = "Possible resubmission of invoice";
+const DUPLICATE_FLAG_PREFIX = "Possible duplicate of invoice";
 
 export type MatchReason =
   | "gstin_invoiceno_total"
@@ -54,20 +53,17 @@ export type MatchReason =
 const REASON_TEXT: Record<MatchReason, string> = {
   gstin_invoiceno_total: "same GSTIN, invoice number, and total",
   gstin_invoiceno_total_crossyear:
-    "same GSTIN, invoice number, and total, but a different financial year — verify this " +
-    "isn't a legitimate reused invoice number",
+    "same GSTIN, invoice number, and total, in a different financial year",
   gstin_total_dateproximity: `same GSTIN and total, invoice date within ${DATE_PROXIMITY_DAYS} days, a different invoice number`,
   vendor_invoiceno_total_no_gstin:
     "same vendor name, invoice number, and total — no GSTIN available to confirm",
 };
 
-export interface DuplicateMatch {
-  id: string;
+/** A single resolved duplicate candidate — the one shape used everywhere: single-invoice
+ *  lookups, the batch classifier, and what gets attached to a field for display. */
+export interface DuplicateInfo {
+  matchId: string;
   reason: MatchReason;
-}
-export interface DuplicateCheck {
-  hardMatch: DuplicateMatch | null;
-  softMatch: DuplicateMatch | null;
 }
 
 /** One invoice's identity fields, shaped for pairwise comparison — the single input both
@@ -81,11 +77,6 @@ export interface InvoiceIdentity {
   invoiceDate: Date | null;
   vendorName: string | null;
   currency: string | null;
-}
-
-interface Match {
-  tier: "hard" | "soft";
-  reason: MatchReason;
 }
 
 const approxEqual = (a: number, b: number, tol = MONEY_TOL) => Math.abs(a - b) <= tol + 1e-9;
@@ -104,9 +95,10 @@ function fiscalYear(d: Date): number {
   return month >= 3 ? d.getUTCFullYear() : d.getUTCFullYear() - 1;
 }
 
-/** The actual matching rule, applied to a single ordered pair — the one place every tier's
- *  logic lives, whether the candidates came from a targeted query or a full table scan. */
-function matchTier(a: InvoiceIdentity, b: InvoiceIdentity): Match | null {
+/** The actual matching rule, applied to a single ordered pair — the one place the logic
+ *  lives, whether the candidates came from a targeted query or a full table scan. Returns
+ *  the reason a match fired, or null. No tier: every match is a candidate, full stop. */
+function matchTier(a: InvoiceIdentity, b: InvoiceIdentity): MatchReason | null {
   if (a.total == null || b.total == null || !approxEqual(a.total, b.total)) return null;
 
   const curA = normalizeCurrency(a.currency);
@@ -123,14 +115,14 @@ function matchTier(a: InvoiceIdentity, b: InvoiceIdentity): Match | null {
     const invB = normText(b.invoiceNo);
     if (invA && invA === invB) {
       if (a.invoiceDate && b.invoiceDate && fiscalYear(a.invoiceDate) !== fiscalYear(b.invoiceDate)) {
-        return { tier: "soft", reason: "gstin_invoiceno_total_crossyear" };
+        return "gstin_invoiceno_total_crossyear";
       }
-      return { tier: "hard", reason: "gstin_invoiceno_total" };
+      return "gstin_invoiceno_total";
     }
 
     if (a.invoiceDate && b.invoiceDate) {
       const daysApart = Math.abs(b.invoiceDate.getTime() - a.invoiceDate.getTime()) / DAY_MS;
-      if (daysApart <= DATE_PROXIMITY_DAYS) return { tier: "soft", reason: "gstin_total_dateproximity" };
+      if (daysApart <= DATE_PROXIMITY_DAYS) return "gstin_total_dateproximity";
     }
     return null;
   }
@@ -142,16 +134,46 @@ function matchTier(a: InvoiceIdentity, b: InvoiceIdentity): Match | null {
   const invA = normText(a.invoiceNo);
   const invB = normText(b.invoiceNo);
   if (vendA && vendA === vendB && invA && invA === invB) {
-    return { tier: "soft", reason: "vendor_invoiceno_total_no_gstin" };
+    return "vendor_invoiceno_total_no_gstin";
   }
   return null;
+}
+
+/** Normalized, order-independent pair key — a dismissal is a fact about the PAIR, not about
+ *  which invoice you started from. */
+function pairKey(a: string, b: string): { invoiceIdLow: string; invoiceIdHigh: string } {
+  return a < b ? { invoiceIdLow: a, invoiceIdHigh: b } : { invoiceIdLow: b, invoiceIdHigh: a };
+}
+
+async function getDismissedPairs(): Promise<Set<string>> {
+  const rows = await prisma.dismissedDuplicate.findMany({
+    select: { invoiceIdLow: true, invoiceIdHigh: true },
+  });
+  return new Set(rows.map((r) => `${r.invoiceIdLow}:${r.invoiceIdHigh}`));
+}
+
+function isDismissed(dismissed: Set<string>, a: string, b: string): boolean {
+  const { invoiceIdLow, invoiceIdHigh } = pairKey(a, b);
+  return dismissed.has(`${invoiceIdLow}:${invoiceIdHigh}`);
+}
+
+/** Records that a human has looked at this specific pair and decided they are NOT the same
+ *  document — the one thing about duplicate detection that's genuinely persisted (D53),
+ *  because it's a human judgment, not something re-derivable from the invoices themselves. */
+export async function dismissDuplicate(invoiceId: string, matchedInvoiceId: string): Promise<void> {
+  const { invoiceIdLow, invoiceIdHigh } = pairKey(invoiceId, matchedInvoiceId);
+  await prisma.dismissedDuplicate.upsert({
+    where: { invoiceIdLow_invoiceIdHigh: { invoiceIdLow, invoiceIdHigh } },
+    create: { invoiceIdLow, invoiceIdHigh },
+    update: {},
+  });
 }
 
 export async function findDuplicates(
   identity: Omit<InvoiceIdentity, "id">,
   excludeId?: string,
-): Promise<DuplicateCheck> {
-  if (identity.total == null) return { hardMatch: null, softMatch: null };
+): Promise<DuplicateInfo | null> {
+  if (identity.total == null) return null;
 
   const candidates = await prisma.invoice.findMany({
     where: {
@@ -170,27 +192,20 @@ export async function findDuplicates(
   });
 
   const self: InvoiceIdentity = { id: excludeId ?? "", ...identity };
-
-  let hardMatch: DuplicateMatch | null = null;
-  let softMatch: DuplicateMatch | null = null;
+  const dismissed = excludeId ? await getDismissedPairs() : new Set<string>();
 
   for (const c of candidates) {
-    const m = matchTier(self, toIdentity(c));
-    if (!m) continue;
-    if (m.tier === "hard") {
-      hardMatch = { id: c.id, reason: m.reason };
-      break; // Tier 1 found — it's the strongest signal, stop looking.
-    }
-    if (!softMatch) softMatch = { id: c.id, reason: m.reason };
+    if (excludeId && isDismissed(dismissed, excludeId, c.id)) continue;
+    const reason = matchTier(self, toIdentity(c));
+    if (reason) return { matchId: c.id, reason };
   }
-
-  return { hardMatch, softMatch: hardMatch ? null : softMatch };
+  return null;
 }
 
 /** Live classification for EVERY currently-existing invoice at once (D50) — one query, then
  *  an in-memory pairwise comparison (cheap at this dataset's scale), instead of a persisted
- *  flag or a query-per-row. Used by the invoices list page for its duplicate badge. */
-export async function classifyAllDuplicates(): Promise<Map<string, "hard" | "soft">> {
+ *  flag or a query-per-row. Used by the list page's badge, the delete gate, and export. */
+export async function classifyAllDuplicates(): Promise<Map<string, DuplicateInfo>> {
   const rows = await prisma.invoice.findMany({
     where: { status: { not: "failed" } },
     select: {
@@ -204,21 +219,19 @@ export async function classifyAllDuplicates(): Promise<Map<string, "hard" | "sof
     },
   });
   const identities = rows.map(toIdentity);
+  const dismissed = await getDismissedPairs();
 
-  const result = new Map<string, "hard" | "soft">();
+  const result = new Map<string, DuplicateInfo>();
   for (const a of identities) {
-    let tier: "hard" | "soft" | null = null;
     for (const b of identities) {
       if (b.id === a.id) continue;
-      const m = matchTier(a, b);
-      if (!m) continue;
-      if (m.tier === "hard") {
-        tier = "hard";
+      if (isDismissed(dismissed, a.id, b.id)) continue;
+      const reason = matchTier(a, b);
+      if (reason) {
+        result.set(a.id, { matchId: b.id, reason });
         break;
       }
-      if (!tier) tier = "soft";
     }
-    if (tier) result.set(a.id, tier);
   }
   return result;
 }
@@ -251,42 +264,40 @@ function extractValue(field: unknown): string | null {
   return null;
 }
 
-/** Patches `invoiceNo` in place with the duplicate result — a hard match floors confidence
- *  and blocks trust via the existing `flags` mechanism; any soft match only ever adds a
- *  `warnings` entry, never touching confidence or `flags` (D44). No-op if invoiceNo wasn't
- *  extracted at all, since there's nothing to attach the result to. */
-export function applyDuplicateResult(scored: ScoredInvoice, check: DuplicateCheck): void {
+/** Applies a resolved duplicate candidate to `invoiceNo`, in place — the one place the
+ *  effect happens, shared by the single-invoice path and the batch path (export), so the
+ *  message text and the effect on confidence never drift between them. Always the same
+ *  treatment (D53): floors confidence and blocks trust via `flags`. No separate non-blocking
+ *  tier — every candidate needs a human to resolve it before this invoice can be trusted. */
+export function applyDuplicateInfo(f: ScoredField, info: DuplicateInfo | undefined): void {
+  if (!info) return;
+  f.confidence = Math.min(f.confidence, 0.3);
+  f.verified = false;
+  f.flags = [...f.flags, `${DUPLICATE_FLAG_PREFIX} ${info.matchId} (${REASON_TEXT[info.reason]})`];
+  f.duplicate = { matchId: info.matchId, reason: info.reason };
+}
+
+/**
+ * Compute the current duplicate status for one invoice and apply it to `invoiceNo`, in
+ * memory only — never persisted (D52). This is the single overlay every live consumer uses:
+ * the detail page and trust route (via `getLiveScoredInvoice`), and the API responses
+ * returned right after an upload/correction/confirmation, so what the caller gets back
+ * always reflects the current table, even though nothing about it gets written to storage.
+ */
+export async function overlayLiveDuplicateStatus(scored: ScoredInvoice, excludeId?: string): Promise<void> {
   const f = scored.fields.invoiceNo;
   if (!f) return;
 
-  if (check.hardMatch) {
-    f.confidence = Math.min(f.confidence, 0.3);
-    f.verified = false;
-    f.flags = [
-      ...f.flags,
-      `${HARD_MATCH_PREFIX} ${check.hardMatch.id} (${REASON_TEXT[check.hardMatch.reason]})`,
-    ];
-  } else if (check.softMatch) {
-    f.warnings = [
-      ...(f.warnings ?? []),
-      `${SOFT_MATCH_PREFIX} ${check.softMatch.id} (${REASON_TEXT[check.softMatch.reason]})`,
-    ];
-  }
-}
-
-/** Classifies a stored `invoiceNoField` JSON blob for the invoices-list badge — reads
- *  straight off the same flags/warnings `applyDuplicateResult` writes, no separate signal to
- *  keep in sync. Returns null when neither tier's message is present (including when the
- *  field has an unrelated flag, e.g. "Invoice number is missing"). */
-export function classifyDuplicateField(field: unknown): "hard" | "soft" | null {
-  if (!field || typeof field !== "object") return null;
-  const flags = "flags" in field && Array.isArray((field as { flags: unknown }).flags)
-    ? ((field as { flags: unknown[] }).flags as unknown[])
-    : [];
-  const warnings = "warnings" in field && Array.isArray((field as { warnings: unknown }).warnings)
-    ? ((field as { warnings: unknown[] }).warnings as unknown[])
-    : [];
-  if (flags.some((f) => typeof f === "string" && f.startsWith(HARD_MATCH_PREFIX))) return "hard";
-  if (warnings.some((w) => typeof w === "string" && w.startsWith(SOFT_MATCH_PREFIX))) return "soft";
-  return null;
+  const info = await findDuplicates(
+    {
+      gstin: scored.fields.vendorGSTIN?.value ?? null,
+      invoiceNo: scored.fields.invoiceNo?.value ?? null,
+      total: parseAmount(scored.fields.total?.value) ?? null,
+      invoiceDate: parseDate(scored.fields.invoiceDate?.value)?.date ?? null,
+      vendorName: scored.fields.vendorName?.value ?? null,
+      currency: scored.fields.currency?.value ?? null,
+    },
+    excludeId,
+  );
+  applyDuplicateInfo(f, info ?? undefined);
 }

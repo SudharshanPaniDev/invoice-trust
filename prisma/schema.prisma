@@ -75,3 +75,15 @@ model LineItem {
 
   @@index([invoiceId])
 }
+
+// A human has explicitly reviewed this pair and decided they are NOT the same document
+// (D53). The only genuinely persisted fact in duplicate detection — everything else about
+// duplicate status is derived fresh every time, never stored. Symmetric: normalized so the
+// pair reads the same regardless of which invoice you start from.
+model DismissedDuplicate {
+  invoiceIdLow  String
+  invoiceIdHigh String
+  createdAt     DateTime @default(now())
+
+  @@id([invoiceIdLow, invoiceIdHigh])
+}

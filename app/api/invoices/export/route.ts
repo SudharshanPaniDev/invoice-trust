@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { parseFilter, buildInvoiceWhere } from "@/lib/query";
-import { toView, type StoredInvoice, type InvoiceView } from "@/lib/invoice-view";
+import { toView, computeTrust, type StoredInvoice, type InvoiceView } from "@/lib/invoice-view";
+import { classifyAllDuplicates, applyDuplicateInfo } from "@/lib/duplicate";
 
 export const runtime = "nodejs";
 
@@ -38,7 +39,6 @@ function toCsv(views: InvoiceView[]): string {
     "canTrust",
     "openFlags",
     "Flags",
-    "Warnings",
     "createdAt",
     ...FIELD_COLUMNS.flatMap(([, label]) => [label, `${label} Confidence`]),
   ];
@@ -52,12 +52,6 @@ function toCsv(views: InvoiceView[]): string {
       const f = v.fields[key];
       return f?.flags.map((flag) => `${label}: ${flag}`) ?? [];
     }).join("; ");
-    // Warnings (D44) are non-blocking, so — unlike Flags — this can be non-empty even on a
-    // trusted, exported invoice; that's the whole point of adding it (D44's Export gap).
-    const warningSummary = FIELD_COLUMNS.flatMap(([key, label]) => {
-      const f = v.fields[key];
-      return f?.warnings?.map((w) => `${label}: ${w}`) ?? [];
-    }).join("; ");
 
     const base = [
       v.id,
@@ -65,7 +59,6 @@ function toCsv(views: InvoiceView[]): string {
       v.canTrust,
       v.openFlags,
       flagSummary,
-      warningSummary,
       v.createdAt.toISOString(),
     ];
     const fieldCells = FIELD_COLUMNS.flatMap(([key]) => {
@@ -92,6 +85,19 @@ export async function GET(req: NextRequest) {
     include: { lineItems: true },
   });
   const views = rows.map((r) => toView(r as unknown as StoredInvoice));
+
+  // Duplicate status is never persisted (D52) — overlay it live, one batch query for every
+  // row in this export, then recompute the trust gate now that it may have added a flag.
+  // The stored data itself never carries a duplicate flag, so without this every export
+  // would silently show every invoice as duplicate-free.
+  const duplicates = await classifyAllDuplicates();
+  for (const v of views) {
+    const f = v.fields.invoiceNo;
+    if (f) applyDuplicateInfo(f, duplicates.get(v.id));
+    const { openFlags, canTrust } = computeTrust(v.fields, v.status);
+    v.openFlags = openFlags;
+    v.canTrust = canTrust;
+  }
 
   if (format === "json") {
     return new NextResponse(JSON.stringify(views, null, 2), {
