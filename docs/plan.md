@@ -1,5 +1,18 @@
 # Invoice Trust Layer — Implementation Plan
 
+> **Note**
+>
+> This document captures the original implementation plan created before development began.
+>
+> The project evolved significantly during implementation as architectural decisions were
+> made — see `decisions.md` for the full record of what changed and why.
+>
+> For the current system, see:
+>
+> - [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) — current architecture, diagrams, API/data model
+> - [`SCOPE.md`](../SCOPE.md) — current product scope and capabilities
+> - [`decisions.md`](../decisions.md) — full decision log / ADR index
+
 > Zamp Engineering Project Round · Problem #3 (messy documents → structured, queryable data)
 
 ## Thesis
